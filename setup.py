@@ -5,10 +5,10 @@ with open("README.md", "r") as f:
 
 setuptools.setup(
     name="dconfusion",
-    version="0.0.1",
+    version="0.0.2",
     author="Surya Gundavarapu",
     author_email="surya_gundavarapu@yahoo.com",
-    description="A package for working with confusion matrices",
+    description="A package for working with confusion matrices. It can pretty print a confusion matrix, its frequencies and various other metrics.",
     long_description="README.md",
     long_description_content_type="text/markdown",
     url="https://github.com/sgundava/dconfusion",
