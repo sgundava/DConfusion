@@ -18,6 +18,38 @@ pip install dconfusion
 Usage
 Here's an example of how to use dconfusion:
 
+# Binary classification (existing usage)
+``` python
+binary_cm = DConfusion(80, 70, 10, 20)
+```
+
+# Multi-class from matrix
+``` python
+multiclass_cm = DConfusion(
+    confusion_matrix=[[50, 3, 2], [8, 45, 1], [4, 2, 48]], 
+    labels=['Cat', 'Dog', 'Bird']
+)
+```
+
+# Multi-class from predictions
+``` python
+y_true = ['Cat', 'Dog', 'Bird', 'Cat', 'Dog']
+y_pred = ['Cat', 'Dog', 'Cat', 'Cat', 'Dog']  
+cm = DConfusion.from_predictions(y_true, y_pred)
+```
+
+# Get class-specific metrics
+``` python
+# Get metrics for a specific class
+cat_metrics = multiclass_cm.get_class_metrics(class_label='Cat')
+# Returns: {'precision': 0.91, 'recall': 0.83, 'f1_score': 0.87, 'specificity': 0.95}
+```
+
+# Get overall metrics
+```
+overall_metrics = multiclass_cm.get_all_metrics()
+```
+
 ```python
 from dconfusion import *
 
@@ -36,9 +68,8 @@ print(f"""Matthews Correlation: {cm.get_matthews_correlation_coefficient():^15.2
 ```
 
 # Roadmap
-This is the initial release (v0.1) of dconfusion, and we plan to add more features in future releases. Some potential features include:
+This is the initial release (v0.2) of dconfusion, and we plan to add more features in future releases. Some potential features include:
 - Additional statistical metrics (e.g., accuracy, precision, recall, F1 score)
-- Support for multi-class classification
 - Integration with popular machine learning libraries
 
 # Contributing
