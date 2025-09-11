@@ -19,17 +19,20 @@ Usage
 Here's an example of how to use dconfusion:
 
 ```python
-from dconfusion.DConfusion import DConfusion
+from dconfusion import *
 
+cm = DConfusion(80, 70, 10, 20)
 
-# Create a confusion matrix
-matrix = DConfusion(80, 70, 10, 20)
+print(cm)
 
-# Print the matrix
-print(matrix)
+print(cm.frequency())
 
-# Calculate frequency for each cell
-print(matrix.frequency())
+print(f"""Specificity: {cm.get_specificity():^15.2f}""")
+print(f"""Sensitivity: {cm.get_sensitivity():^15.2f}""")
+print(f"""Accuracy: {cm.get_accuracy():^15.2f}""")
+print(f"""Precision: {cm.get_precision():^15.2f}""")
+print(f"""F1 Score: {cm.get_f1_score():^15.2f}""")
+print(f"""Matthews Correlation: {cm.get_matthews_correlation_coefficient():^15.2f}""")
 ```
 
 # Roadmap
