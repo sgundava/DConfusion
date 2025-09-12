@@ -50,26 +50,29 @@ cat_metrics = multiclass_cm.get_class_metrics(class_label='Cat')
 overall_metrics = multiclass_cm.get_all_metrics()
 ```
 
+# Plot confusion matrix
 ```python
-from dconfusion import *
-
 cm = DConfusion(80, 70, 10, 20)
+fig = cm.plot()
 
-print(cm)
+# Normalized with custom styling
+fig2 = cm.plot(normalize=True, cmap='Blues', figsize=(10, 8))
 
-print(cm.frequency())
+# With metrics panel (binary only)
+fig3 = cm.plot(show_metrics=True)
 
-print(f"""Specificity: {cm.get_specificity():^15.2f}""")
-print(f"""Sensitivity: {cm.get_sensitivity():^15.2f}""")
-print(f"""Accuracy: {cm.get_accuracy():^15.2f}""")
-print(f"""Precision: {cm.get_precision():^15.2f}""")
-print(f"""F1 Score: {cm.get_f1_score():^15.2f}""")
-print(f"""Matthews Correlation: {cm.get_matthews_correlation_coefficient():^15.2f}""")
+multiclass_cm = DConfusion(
+    confusion_matrix=[[50, 3, 2], [8, 45, 1], [4, 2, 48]],
+    labels=['Cat', 'Dog', 'Bird']
+)
+
+fig4 = multiclass_cm.plot(normalize=True, cmap='cool') # If we show metrics, only accuracy is displayed
+fig4.show()
 ```
 
 # Roadmap
-This is the initial release (v0.2) of dconfusion, and we plan to add more features in future releases. Some potential features include:
-- Additional statistical metrics (e.g., accuracy, precision, recall, F1 score)
+This is the initial release (v0.2.1) of dconfusion, and we plan to add more features in future releases. Some potential features include:
+- Backtracing statistical metrics based on partial data
 - Integration with popular machine learning libraries
 
 # Contributing
@@ -79,4 +82,7 @@ We welcome contributions to dconfusion! If you'd like to contribute, please fork
 dconfusion is released under the MIT License. See LICENSE for details.
 
 # Changelog
-v0.1: Initial release with basic confusion matrix representation and frequency calculation
+- v0.1: Initial release with basic confusion matrix representation and frequency calculation
+- v0.2: Added support for multi-class confusion matrices
+- v0.2.1: Added support for plotting confusion matrices
+- v0.2.2 (planned): Add per-class metrics to the plot. 
