@@ -14,6 +14,10 @@ authors = [
     { name = "Matthew Lanham", email = "mlanham1@butler.edu" },
     { name = "Aadya Pawar", email = "pawar17@purdue.edu" },
 ]
+maintainers = [
+    { name = "Matthew Lanham", email = "mlanham1@butler.edu" },
+    { name = "Aadya Pawar", email = "pawar17@purdue.edu" },
+]
 keywords = ["confusion", "matrix"]
 dependencies = [
   "numpy", "typing", "matplotlib"
