@@ -39,6 +39,7 @@ class DConfusion:
             self._init_multiclass(confusion_matrix, labels)
         elif all(v is not None for v in [true_positive, false_negative, false_positive, true_negative]):
             self._init_binary(true_positive, false_negative, false_positive, true_negative)
+            self._init_freq()
         else:
             raise ValueError("Either provide (tp, fn, fp, tn) for binary classification or confusion_matrix for multi-class")
     
@@ -99,6 +100,25 @@ class DConfusion:
             self.false_positive = int(self.matrix[0, 1])
             self.true_negative = int(self.matrix[0, 0])
             self.false_negative = int(self.matrix[1, 0])
+
+    def _init_freq(self):
+        """
+        Calculate and return frequency percentages for each cell.
+
+        Returns:
+            str: Formatted string showing frequency percentages
+
+        Raises:
+            ZeroDivisionError: If total is zero
+        """
+        if self.total == 0:
+            raise ZeroDivisionError("Cannot calculate frequency for an empty confusion matrix")
+
+        if self.is_binary and self.n_classes == 2:
+            self.tp_freq = (self.true_positive / self.total) * 100
+            self.tn_freq = (self.true_negative / self.total) * 100
+            self.fp_freq = (self.false_positive / self.total) * 100
+            self.fn_freq = (self.false_negative / self.total) * 100
 
     def __str__(self) -> str:
         """String representation of the confusion matrix."""
@@ -173,16 +193,11 @@ class DConfusion:
             raise ZeroDivisionError("Cannot calculate frequency for an empty confusion matrix")
 
         if self.is_binary and self.n_classes == 2:
-            tp_freq = (self.true_positive / self.total) * 100
-            tn_freq = (self.true_negative / self.total) * 100
-            fp_freq = (self.false_positive / self.total) * 100
-            fn_freq = (self.false_negative / self.total) * 100
-
             return (
                 f"Confusion Matrix Frequency (%):\n"
                 f"                 \t Predicted Positive  Predicted Negative\n"
-                f"Actual Positive  \t{tp_freq:^18.2f}  {fn_freq:^18.2f}\n"
-                f"Actual Negative  \t{fp_freq:^18.2f}  {tn_freq:^18.2f}"
+                f"Actual Positive  \t{self.tp_freq:^18.2f}  {self.fn_freq:^18.2f}\n"
+                f"Actual Negative  \t{self.fp_freq:^18.2f}  {self.tn_freq:^18.2f}"
             )
         else:
             return self._format_multiclass_frequency()
@@ -225,11 +240,21 @@ class DConfusion:
         return self.matrix.tolist()
 
     def get_sum_of_errors(self) -> int:
-        """Get total number of incorrect predictions."""
+        """
+        Get total number of incorrect predictions.
+        
+        Returns:
+            int: Number of samples that were classified incorrectly
+        """
         return self.total - int(np.trace(self.matrix))
 
     def get_sum_of_corrects(self) -> int:
-        """Get total number of correct predictions."""
+        """
+        Get total number of correct predictions.
+        
+        Returns:
+            int: Number of samples that were classified correctly
+        """
         return int(np.trace(self.matrix))
 
     def get_accuracy(self) -> float:
@@ -242,11 +267,33 @@ class DConfusion:
         self._validate_non_zero_denominator(self.total, "accuracy")
         return np.trace(self.matrix) / self.total
 
+    def get_expected_accuracy(self) -> float:
+        """
+        Calculate expected accuracy (chance agreement) for Cohen's Kappa calculation.
+        
+        Expected accuracy is the accuracy that would be achieved by chance alone,
+        calculated as the sum of the products of marginal probabilities.
+        
+        Returns:
+            float: Expected accuracy value between 0 and 1
+            
+        Raises:
+            ValueError: If not binary classification (only supports 2x2 matrices)
+        """
+        if self.n_classes != 2:
+            raise ValueError("Expected accuracy is only available for binary classification")
+        return ((((self.true_positive + self.false_positive)/self.total)*(self.true_positive + self.false_negative)/self.total)
+                + (((self.true_negative + self.false_positive)/self.total)*(self.true_negative + self.false_negative)/self.total))
     # Alias for accuracy
     get_ccr = get_accuracy
 
     def get_error_rate(self) -> float:
-        """Calculate overall error rate."""
+        """
+        Calculate overall error rate (1 - accuracy).
+        
+        Returns:
+            float: Error rate value between 0 and 1
+        """
         return 1 - self.get_accuracy()
 
     def get_class_metrics(self, class_index: Optional[int] = None, class_label: Optional[Any] = None) -> Dict[str, float]:
@@ -342,6 +389,26 @@ class DConfusion:
         
         return weighted_metrics
 
+    def get_binary_values(self) -> Dict[str, int]:
+        """
+        Get the four basic confusion matrix values for binary classification.
+        
+        Returns:
+            Dict[str, int]: Dictionary with keys 'TP', 'FN', 'FP', 'TN'
+            
+        Raises:
+            ValueError: If not binary classification
+        """
+        if self.n_classes != 2:
+            raise ValueError("Binary values are only available for binary classification")
+        
+        return {
+            'TP': self.true_positive,
+            'FN': self.false_negative, 
+            'FP': self.false_positive,
+            'TN': self.true_negative
+        }
+
     # Binary classification methods (work for binary case or when n_classes=2)
     def get_recall(self) -> float:
         """Calculate recall for binary classification or positive class."""
@@ -393,7 +460,15 @@ class DConfusion:
     get_f_measure = get_f1_score
 
     def get_false_positive_rate(self) -> float:
-        """Calculate false positive rate."""
+        """
+        Calculate false positive rate (Type I error rate).
+        
+        Also known as fall-out or probability of false alarm.
+        FPR = FP / (FP + TN)
+        
+        Returns:
+            float: False positive rate value between 0 and 1
+        """
         if not hasattr(self, 'false_positive'):
             # Calculate for positive class in multi-class
             class_metrics = self.get_class_metrics(class_index=1)
@@ -404,7 +479,15 @@ class DConfusion:
         return self.false_positive / denominator
 
     def get_false_negative_rate(self) -> float:
-        """Calculate false negative rate."""
+        """
+        Calculate false negative rate (Type II error rate).
+        
+        Also known as miss rate.
+        FNR = FN / (FN + TP) = 1 - Recall
+        
+        Returns:
+            float: False negative rate value between 0 and 1
+        """
         return 1 - self.get_recall()
 
     # More aliases
@@ -417,6 +500,7 @@ class DConfusion:
         metrics = {
             'accuracy': self.get_accuracy(),
             'error_rate': self.get_error_rate(),
+            'expected_accuracy': self.get_expected_accuracy(),
         }
         
         if self.n_classes == 2:
@@ -437,6 +521,10 @@ class DConfusion:
                     metrics['balance'] = self.get_balance()
                 if hasattr(self, 'get_matthews_correlation_coefficient'):
                     metrics['matthews_correlation_coefficient'] = self.get_matthews_correlation_coefficient()
+                if hasattr(self, 'get_cohens_kappa'):
+                    metrics['cohens_kappa'] = self.get_cohens_kappa()
+                if hasattr(self, 'brier_score'):
+                    metrics['brier_score'] = self.brier_score()
                     
             except ZeroDivisionError as e:
                 metrics['error'] = str(e)
@@ -488,48 +576,165 @@ class DConfusion:
         self._validate_non_zero_denominator(denominator, "Matthews Correlation Coefficient")
         return numerator / denominator
 
+    def get_cohens_kappa(self) -> float:
+        """
+        Calculate Cohen's kappa coefficient (binary only).
+        
+        Cohen's kappa measures inter-rater agreement for categorical items,
+        accounting for chance agreement. Ranges from -1 to 1, where:
+        - 1 indicates perfect agreement
+        - 0 indicates agreement by chance alone
+        - Negative values indicate agreement worse than chance
+        
+        Formula: κ = (Observed Agreement - Expected Agreement) / (1 - Expected Agreement)
+        
+        Returns:
+            float: Cohen's kappa coefficient
+            
+        Raises:
+            ValueError: If not binary classification
+        """
+        if self.n_classes != 2:
+            raise ValueError("Cohen's Kappa is only available for binary classification")
+        cohens_kappa = (2 * (self.true_positive * self.true_negative - self.false_positive * self.false_negative)) / \
+            ((self.true_positive + self.false_positive) * (self.false_positive + self.true_negative) +
+             (self.true_positive + self.false_negative)*(self.false_negative + self.true_negative))
+        assert(math.isclose(cohens_kappa,
+                           (self.get_accuracy() - self.get_expected_accuracy()) / (1 - self.get_expected_accuracy())
+                           )
+              )
+        return cohens_kappa
+
+    def brier_score(self) -> float:
+        """
+        Calculate Brier score (binary only).
+        
+        The Brier score is a proper scoring rule that measures the accuracy 
+        of probabilistic predictions. For a confusion matrix, it equals 1 - accuracy.
+        Lower values indicate better predictions.
+        
+        Returns:
+            float: Brier score value between 0 and 1
+            
+        Raises:
+            ValueError: If not binary classification
+        """
+        if self.n_classes != 2:
+            raise ValueError("Brier score is only available for binary classification")
+        brier_score = (self.false_positive + self.false_negative) / self.total
+        assert math.isclose(brier_score, (1 - self.get_accuracy()))
+        return brier_score
+
     def false_rate(self) -> float:
-        """Calculate false rate (same as error rate)."""
+        """
+        Calculate false rate (same as error rate).
+        
+        This is an alias for get_error_rate().
+        
+        Returns:
+            float: False rate value between 0 and 1
+        """
         return self.get_error_rate()
 
+    @property
+    def accuracy(self) -> float:
+        """Accuracy property for convenient access."""
+        return self.get_accuracy()
+
+    @property 
+    def precision(self) -> float:
+        """Precision property for convenient access."""
+        return self.get_precision()
+
+    @property
+    def recall(self) -> float:
+        """Recall property for convenient access."""
+        return self.get_recall()
+
+    @property
+    def f1_score(self) -> float:
+        """F1 score property for convenient access."""
+        return self.get_f1_score()
+
+    @property
+    def specificity(self) -> float:
+        """Specificity property for convenient access."""
+        return self.get_specificity()
+
+    def frequency_of_faulty_items(self) -> float:
+        """
+        Calculate frequency of faulty items as percentage (binary only).
+        
+        Returns the percentage of actual positive cases in the dataset.
+        This represents the prevalence of the positive class.
+        
+        Returns:
+            float: Percentage of positive cases (0-100)
+            
+        Raises:
+            ValueError: If not binary classification
+        """
+        if self.n_classes != 2:
+            raise ValueError("Frequency of faulty items is only available for binary classification")
+        return (self.true_positive + self.false_negative) * 100 / self.total
+
     @classmethod
-    def from_predictions(cls, y_true: List[Any], y_pred: List[Any], 
-                        labels: Optional[List[Any]] = None) -> 'DConfusion':
+    def from_predictions(cls, y_true: List[Any], y_pred: List[Any],
+                         labels: Optional[List[Any]] = None) -> 'DConfusion':
         """
         Create DConfusion object from actual and predicted labels.
-        
+
         Args:
             y_true: List of actual labels
             y_pred: List of predicted labels
             labels: List of all possible labels (for multi-class)
-            
+
         Returns:
             DConfusion: New DConfusion object
         """
         if len(y_true) != len(y_pred):
             raise ValueError("y_true and y_pred must have the same length")
-        
+
         # Determine unique labels
         if labels is None:
             unique_labels = sorted(list(set(y_true + y_pred)))
         else:
             unique_labels = list(labels)
-        
+
         n_classes = len(unique_labels)
-        
+
         # Create label to index mapping
         label_to_idx = {label: i for i, label in enumerate(unique_labels)}
-        
+
         # Initialize confusion matrix
         matrix = np.zeros((n_classes, n_classes), dtype=int)
-        
+
         # Fill confusion matrix
         for true_label, pred_label in zip(y_true, y_pred):
             true_idx = label_to_idx[true_label]
             pred_idx = label_to_idx[pred_label]
             matrix[true_idx, pred_idx] += 1
-        
+
         return cls(confusion_matrix=matrix, labels=unique_labels)
+
+
+    def validate_matrix(self) -> bool:
+        """
+        Validate that the confusion matrix is internally consistent.
+
+        Returns:
+            bool: True if matrix is valid
+
+        Raises:
+            ValueError: If matrix contains inconsistencies
+        """
+        if np.any(self.matrix < 0):
+            raise ValueError("Confusion matrix cannot contain negative values")
+
+        if self.total != np.sum(self.matrix):
+            raise ValueError("Matrix total doesn't match sum of all cells")
+        # TODO: Planning to add more validations here in upcoming versions
+        return True
 
     def plot(self, normalize: bool = False, cmap: str = 'Blues',
              figsize: tuple = (8, 6), annot: bool = True, fmt: str = 'd',
@@ -587,13 +792,13 @@ class DConfusion:
         # Adjust color scaling for better readability
         plot_kwargs = kwargs.copy()
         if normalize:
-        # For normalized plots, set a reasonable vmax to avoid overly bright colors
+            # For normalized plots, set a reasonable vmax to avoid overly bright colors
             if 'vmax' not in plot_kwargs and 'vmin' not in plot_kwargs:
                 plot_kwargs['vmax'] = min(100, plot_matrix.max() * 1.1)
                 plot_kwargs['vmin'] = 0
 
         # Create heatmap
-        im = ax1.imshow(plot_matrix, interpolation='nearest', cmap=cmap, **kwargs)
+        im = ax1.imshow(plot_matrix, interpolation='nearest', cmap=cmap, **plot_kwargs)
 
         # Add colorbar
         cbar = ax1.figure.colorbar(im, ax=ax1)
@@ -676,6 +881,69 @@ class DConfusion:
         defaults.update(kwargs)
         return self.plot(**defaults)
 
+    def get_metric_confidence_interval(self, metric: str, confidence: float = 0.95) -> Tuple[float, float]:
+        """
+        Calculate confidence interval for a given metric using Wilson score interval.
+
+        Args:
+            metric: Name of the metric ('accuracy', 'precision', 'recall', etc.)
+            confidence: Confidence level (default 0.95 for 95% CI)
+
+        Returns:
+            Tuple: (lower_bound, upper_bound)
+        """
+        if metric not in ['accuracy', 'precision', 'recall', 'specificity']:
+            raise ValueError(f"Confidence intervals not supported for metric: {metric}")
+
+        # Get the metric value and sample size
+        if metric == 'accuracy':
+            successes = self.get_sum_of_corrects()
+            n = self.total
+        elif metric == 'precision':
+            successes = self.true_positive
+            n = self.true_positive + self.false_positive
+        elif metric == 'recall':
+            successes = self.true_positive
+            n = self.true_positive + self.false_negative
+        elif metric == 'specificity':
+            successes = self.true_negative
+            n = self.true_negative + self.false_positive
+
+        if n == 0:
+            return (0.0, 0.0)
+
+        # Wilson score interval
+        from scipy import stats
+        z = stats.norm.ppf(1 - (1 - confidence) / 2)
+        p = successes / n
+
+        denominator = 1 + z ** 2 / n
+        center = (p + z ** 2 / (2 * n)) / denominator
+        margin = z * math.sqrt(p * (1 - p) / n + z ** 2 / (4 * n ** 2)) / denominator
+
+        return max(0, center - margin), min(1, center + margin)
+
+    def get_optimal_threshold_info(self) -> Dict[str, float]:
+        """
+        Calculate metrics related to optimal threshold selection (binary only).
+
+        Returns:
+            Dict: Information about current operating point
+        """
+        if self.n_classes != 2:
+            raise ValueError("Threshold analysis only available for binary classification")
+
+        tpr = self.get_recall()
+        fpr = self.get_false_positive_rate()
+
+        return {
+            'sensitivity': tpr,
+            'specificity': 1 - fpr,
+            'youden_index': tpr + (1 - fpr) - 1,  # J = Sensitivity + Specificity - 1
+            'distance_to_perfect': math.sqrt((1 - tpr) ** 2 + fpr ** 2),
+            'likelihood_ratio_positive': tpr / fpr if fpr > 0 else float('inf'),
+            'likelihood_ratio_negative': (1 - tpr) / (1 - fpr) if fpr < 1 else float('inf')
+        }
 
     def plot_with_metrics(self, **kwargs):
             """
@@ -689,21 +957,85 @@ class DConfusion:
             """
             return self.plot(show_metrics=True, **kwargs)
 
-if __name__ == "__main__":
-    # Basic plot
-    cm = DConfusion(80, 70, 10, 20)
-    fig = cm.plot()
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Export confusion matrix to dictionary format.
 
-    # Normalized with custom styling
-    fig2 = cm.plot(normalize=True, cmap='Blues', figsize=(10, 8))
+        Returns:
+            Dict: Serializable dictionary representation
+        """
+        return {
+            'matrix': self.matrix.tolist(),
+            'labels': self.labels,
+            'n_classes': self.n_classes,
+            'total': self.total,
+            'is_binary': self.is_binary
+        }
 
-    # With metrics panel (binary only)
-    fig3 = cm.plot(show_metrics=True)
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'DConfusion':
+        """
+        Create DConfusion object from dictionary.
 
-    multiclass_cm = DConfusion(
-        confusion_matrix=[[50, 3, 2], [8, 45, 1], [4, 2, 48]],
-        labels=['Cat', 'Dog', 'Bird']
-    )
+        Args:
+            data: Dictionary created by to_dict()
 
-    fig4 = multiclass_cm.plot(show_metrics=True, normalize=True, cmap='cool')
-    fig4.show()
+        Returns:
+            DConfusion: New DConfusion object
+        """
+        return cls(confusion_matrix=data['matrix'], labels=data['labels'])
+
+    def to_csv(self, filepath: str, include_labels: bool = True) -> None:
+        """
+        Export confusion matrix to CSV file.
+
+        Args:
+            filepath: Path to save CSV file
+            include_labels: Whether to include row/column labels
+        """
+        import csv
+
+        with open(filepath, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+
+            if include_labels:
+                # Header row
+                header = [''] + [str(label) for label in self.labels]
+                writer.writerow(header)
+
+                # Data rows with labels
+                for i, label in enumerate(self.labels):
+                    row = [str(label)] + [str(val) for val in self.matrix[i]]
+                    writer.writerow(row)
+            else:
+                # Just the matrix data
+                for row in self.matrix:
+                    writer.writerow([str(val) for val in row])
+
+    @classmethod
+    def from_csv(cls, filepath: str, has_labels: bool = True) -> 'DConfusion':
+        """
+        Create DConfusion object from CSV file.
+
+        Args:
+            filepath: Path to CSV file
+            has_labels: Whether CSV includes row/column labels
+
+        Returns:
+            DConfusion: New DConfusion object
+        """
+        import csv
+
+        with open(filepath, 'r') as csvfile:
+            reader = csv.reader(csvfile)
+            rows = list(reader)
+
+            if has_labels:
+                labels = rows[0][1:]  # Skip first cell
+                matrix_data = []
+                for row in rows[1:]:
+                    matrix_data.append([int(val) for val in row[1:]])
+                return cls(confusion_matrix=matrix_data, labels=labels)
+            else:
+                matrix_data = [[int(val) for val in row] for row in rows]
+                return cls(confusion_matrix=matrix_data)

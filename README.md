@@ -85,4 +85,7 @@ dconfusion is released under the MIT License. See LICENSE for details.
 - v0.1: Initial release with basic confusion matrix representation and frequency calculation
 - v0.2: Added support for multi-class confusion matrices
 - v0.2.1: Added support for plotting confusion matrices
-- v0.2.2 (planned): Add per-class metrics to the plot. 
+- v0.2.2: Added more metrics and CSV functionality. QOL improvements. Began adding validation functionality.
+- Planned: 
+  - Added support for multi-class confusion matrices with class level metrics 
+  - Break the file into multiple modules

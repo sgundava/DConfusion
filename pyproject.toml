@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dconfusion"
-version = "0.2.1"
-description = "A package for working with confusion matrices. It can pretty print a confusion matrix, its frequencies and various other metrics."
+version = "0.2.2"
+description = "A package for working with confusion matrices."
 readme = "README.md"
 requires-python = ">=3.8"
 license = { file = "LICENSE" }
@@ -20,7 +20,7 @@ maintainers = [
 ]
 keywords = ["confusion", "matrix"]
 dependencies = [
-  "numpy", "typing", "matplotlib"
+  "numpy", "typing", "matplotlib", "scipy", 'csv'
 ]
 
 classifiers = [
