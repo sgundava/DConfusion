@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dconfusion"
-version = "0.2.2"
+version = "1.0.0"
 description = "A package for working with confusion matrices."
 readme = "README.md"
 requires-python = ">=3.8"
@@ -47,3 +47,6 @@ target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
 
 [tool.isort]
 profile = "black"
+
+[tool.setuptools]
+packages = ["dconfusion"]
