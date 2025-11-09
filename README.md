@@ -155,16 +155,12 @@ accuracy). With n=30, differences smaller than ~18.2% may not be meaningful.
 ================================================================================
 ```
 
-**📖 For comprehensive documentation, see [WARNINGS_GUIDE.md](WARNINGS_GUIDE.md)**
-
 ### Research Foundation
 
 The warning system is based on:
 - **Chicco et al.** - Studies on MCC advantages and metric limitations
 - **Lovell et al.** - Research showing uncertainty scales as 1/√N
 - **Fazekas & Kovács** - Work on numerical consistency in ML evaluation
-
-See `examples/warnings_demo.py` for detailed examples.
 
 # Roadmap
 This is the initial release (v0.2.1) of dconfusion, and we plan to add more features in future releases. Some potential features include:
@@ -182,6 +178,5 @@ dconfusion is released under the MIT License. See LICENSE for details.
 - v0.2: Added support for multi-class confusion matrices
 - v0.2.1: Added support for plotting confusion matrices
 - v0.2.2: Added more metrics and CSV functionality. QOL improvements. Began adding validation functionality.
-- Planned: 
-  - Added support for multi-class confusion matrices with class level metrics 
-  - Break the file into multiple modules
+- v1.0.0: Broke the file into multiple modules for better modularity. Added support for warnings.
+- v1.0.1: Updated documentation.
