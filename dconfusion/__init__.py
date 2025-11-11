@@ -5,11 +5,17 @@ from .warnings import (
     WarningChecker,
     check_comparison_validity
 )
+from .statistics import (
+    StatisticalTestsMixin,
+    MetricInferenceMixin
+)
 
 __all__ = [
     'DConfusion',
     'ConfusionMatrixWarning',
     'WarningSeverity',
     'WarningChecker',
-    'check_comparison_validity'
+    'check_comparison_validity',
+    'StatisticalTestsMixin',
+    'MetricInferenceMixin'
 ]

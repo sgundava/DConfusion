@@ -6,17 +6,10 @@ A Python package for working with confusion matrices - now with a web UI!
 
 ## ✨ New: Web Interface!
 
-Launch the interactive web app to compare confusion matrices visually:
-
-```bash
-./run_app.sh
-# or
-streamlit run app/streamlit_app.py
-```
-
 **Features:**
 - 📊 Compare multiple models side-by-side
 - 📈 Interactive visualizations and metrics
+- 📊 Statistical testing with bootstrap CIs and McNemar's test
 - 📥 Export comparisons as CSV
 - 🎯 Identify best-performing models instantly
 
@@ -29,8 +22,9 @@ streamlit run app/streamlit_app.py
 * **Visualization** - Beautiful matplotlib plots with metrics panels
 * **Import/Export** - CSV, JSON, dict formats
 * **Web UI** - Streamlit app for easy comparison
-* **⚠️ NEW: Warning System** - Research-based warnings for common pitfalls (sample size, class imbalance, metric reliability)
-* **Modular Design** - Clean separation: core, metrics, visualization, I/O
+* **⚠️ Warning System** - Research-based warnings for common pitfalls (sample size, class imbalance, metric reliability)
+* **📊 NEW: Statistical Testing** - Bootstrap confidence intervals, McNemar's test, metric consistency checks
+* **Modular Design** - Clean separation: core, metrics, visualization, I/O, statistics
 
 ## Installation
 You can install `dconfusion` using pip:
@@ -124,8 +118,8 @@ for warning in warnings:
     print(warning.severity, warning.category, warning.message)
 
 # Compare two models with warnings
-model_a = DConfusion(tp=48, fn=7, fp=5, tn=40)
-model_b = DConfusion(tp=50, fn=5, fp=8, tn=37)
+model_a = DConfusion(true_positive=48, false_negative=7, false_positive=5, true_negative=40)
+model_b = DConfusion(true_positive=50, false_negative=5, false_positive=8, true_negative=37)
 result = model_a.compare_with(model_b, metric='accuracy')
 
 if result['has_warnings']:
@@ -162,6 +156,122 @@ The warning system is based on:
 - **Lovell et al.** - Research showing uncertainty scales as 1/√N
 - **Fazekas & Kovács** - Work on numerical consistency in ML evaluation
 
+## 📊 Statistical Testing (NEW!)
+
+DConfusion now includes rigorous statistical methods to compare models and quantify uncertainty in your metrics.
+
+### Bootstrap Confidence Intervals
+
+Estimate the uncertainty in any metric using bootstrap resampling. Unlike traditional methods, bootstrap doesn't assume any particular distribution and works well for small samples and complex metrics like F1 score.
+
+```python
+from dconfusion import DConfusion
+
+# Create a confusion matrix
+cm = DConfusion(true_positive=85, false_negative=15,
+                false_positive=10, true_negative=90)
+
+# Calculate 95% confidence interval for accuracy
+result = cm.get_bootstrap_confidence_interval(
+    metric='accuracy',
+    confidence_level=0.95,
+    n_bootstrap=1000,
+    random_state=42
+)
+
+print(f"Accuracy: {result['point_estimate']:.3f}")
+print(f"95% CI: [{result['lower']:.3f}, {result['upper']:.3f}]")
+print(f"Std Error: {result['std_error']:.3f}")
+```
+
+**Output:**
+```
+Accuracy: 0.875
+95% CI: [0.825, 0.915]
+Std Error: 0.023
+```
+
+**Supported metrics:** accuracy, precision, recall, specificity, f1_score, and more!
+
+### McNemar's Test for Paired Comparison
+
+Compare two models tested on the same dataset using McNemar's test. This is more powerful than simply comparing accuracies because it accounts for the paired nature of predictions.
+
+```python
+# Two models tested on the same data
+model_a = DConfusion(true_positive=85, false_negative=15,
+                     false_positive=10, true_negative=90)
+
+model_b = DConfusion(true_positive=80, false_negative=20,
+                     false_positive=8, true_negative=92)
+
+# Run McNemar's test
+result = model_a.mcnemar_test(model_b, alpha=0.05)
+
+print(f"Test Statistic: {result['statistic']:.4f}")
+print(f"P-value: {result['p_value']:.4f}")
+print(f"Significant: {result['significant']}")
+print(f"Interpretation: {result['interpretation']}")
+```
+
+**Output:**
+```
+Test Statistic: 1.3333
+P-value: 0.2482
+Significant: False
+Interpretation: No significant difference between models (p=0.2482)
+```
+
+**Key advantages:**
+- Specifically designed for paired classifier comparison
+- More powerful than unpaired tests
+- Accounts for cases where both models agree
+- Provides effect size (odds ratio)
+
+### Metric Consistency Check
+
+Verify that reported metrics match what would be computed from a confusion matrix. Useful for validating results from papers or detecting reporting errors.
+
+```python
+cm = DConfusion(true_positive=85, false_negative=15,
+                false_positive=10, true_negative=90)
+
+# Check if metrics are consistent
+result = cm.check_metric_consistency({
+    'accuracy': 0.875,
+    'precision': 0.8947,
+    'recall': 0.85,
+    'f1_score': 0.8718
+})
+
+print(f"All metrics consistent: {result['consistent']}")
+if not result['consistent']:
+    print(f"Mismatches: {result['mismatches']}")
+    for metric, details in result['details'].items():
+        if details['status'] == 'mismatch':
+            print(f"  {metric}: Expected {details['expected']:.4f}, "
+                  f"Got {details['actual']:.4f}")
+```
+
+### Statistical Testing in Web UI
+
+The Streamlit app includes an interactive **Statistical Testing** tab where you can:
+- Calculate bootstrap confidence intervals for any model and metric
+- Run McNemar's test to compare two models
+- Visualize results with clear interpretations
+- Adjust parameters (confidence level, bootstrap samples, significance level)
+
+```bash
+streamlit run app/streamlit_app.py
+```
+
+### Research Foundation
+
+The statistical methods are based on established research:
+- **Efron & Tibshirani (1993)** - Bootstrap methods for standard errors and confidence intervals
+- **McNemar (1947)** - Note on the sampling error of the difference between correlated proportions
+- **Dietterich (1998)** - Approximate statistical tests for comparing supervised classification learning algorithms
+
 # Roadmap
 This is the initial release (v0.2.1) of dconfusion, and we plan to add more features in future releases. Some potential features include:
 - Backtracing statistical metrics based on partial data
@@ -179,4 +289,4 @@ dconfusion is released under the MIT License. See LICENSE for details.
 - v0.2.1: Added support for plotting confusion matrices
 - v0.2.2: Added more metrics and CSV functionality. QOL improvements. Began adding validation functionality.
 - v1.0.0: Broke the file into multiple modules for better modularity. Added support for warnings.
-- v1.0.1: Updated documentation.
+- v1.0.1: Updated documentation. Added new statistical tests.

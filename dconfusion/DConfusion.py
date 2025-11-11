@@ -9,9 +9,11 @@ from .core import DConfusionCore
 from .metrics import MetricsMixin
 from .visualization import VisualizationMixin
 from .io import IOMixin
+from .statistics import StatisticalTestsMixin, MetricInferenceMixin
 
 
-class DConfusion(DConfusionCore, MetricsMixin, VisualizationMixin, IOMixin):
+class DConfusion(DConfusionCore, MetricsMixin, VisualizationMixin, IOMixin,
+                  StatisticalTestsMixin, MetricInferenceMixin):
     """
     A comprehensive confusion matrix class for both binary and multi-class classification analysis.
 
