@@ -575,3 +575,305 @@ class MetricsMixin:
             result['has_warnings'] = len(warnings) > 0
 
         return result
+
+    def get_misclassification_cost(self, cost_fp: float = 1.0, cost_fn: float = 1.0,
+                                   cost_tp: float = 0.0, cost_tn: float = 0.0) -> float:
+        """
+        Calculate total misclassification cost based on custom costs for each outcome.
+
+        Args:
+            cost_fp: Cost of false positive (default: 1.0)
+            cost_fn: Cost of false negative (default: 1.0)
+            cost_tp: Cost/benefit of true positive (default: 0.0, negative values indicate benefit)
+            cost_tn: Cost/benefit of true negative (default: 0.0, negative values indicate benefit)
+
+        Returns:
+            float: Total cost (lower is better)
+
+        Example:
+            >>> cm = DConfusion(tp=80, fn=20, fp=10, tn=90)
+            >>> # FN costs 10x more than FP (e.g., missing a disease diagnosis)
+            >>> total_cost = cm.get_misclassification_cost(cost_fp=1, cost_fn=10)
+        """
+        if self.n_classes != 2:
+            raise ValueError("Cost-sensitive analysis is only available for binary classification")
+
+        total_cost = (cost_tp * self.true_positive +
+                     cost_tn * self.true_negative +
+                     cost_fp * self.false_positive +
+                     cost_fn * self.false_negative)
+
+        return total_cost
+
+    def get_average_misclassification_cost(self, cost_fp: float = 1.0, cost_fn: float = 1.0,
+                                           cost_tp: float = 0.0, cost_tn: float = 0.0) -> float:
+        """
+        Calculate average misclassification cost per sample.
+
+        Args:
+            cost_fp: Cost of false positive (default: 1.0)
+            cost_fn: Cost of false negative (default: 1.0)
+            cost_tp: Cost/benefit of true positive (default: 0.0)
+            cost_tn: Cost/benefit of true negative (default: 0.0)
+
+        Returns:
+            float: Average cost per sample
+
+        Example:
+            >>> cm = DConfusion(tp=80, fn=20, fp=10, tn=90)
+            >>> avg_cost = cm.get_average_misclassification_cost(cost_fp=1, cost_fn=10)
+        """
+        if self.n_classes != 2:
+            raise ValueError("Cost-sensitive analysis is only available for binary classification")
+
+        validate_non_zero_denominator(self.total, "average misclassification cost")
+        total_cost = self.get_misclassification_cost(cost_fp, cost_fn, cost_tp, cost_tn)
+        return total_cost / self.total
+
+    def get_cost_benefit_summary(self, cost_fp: float = 1.0, cost_fn: float = 1.0,
+                                 cost_tp: float = 0.0, cost_tn: float = 0.0,
+                                 benefit_tp: Optional[float] = None,
+                                 benefit_tn: Optional[float] = None) -> Dict[str, float]:
+        """
+        Calculate comprehensive cost-benefit analysis.
+
+        Args:
+            cost_fp: Cost of false positive (default: 1.0)
+            cost_fn: Cost of false negative (default: 1.0)
+            cost_tp: Cost of true positive (default: 0.0), use negative for benefit
+            cost_tn: Cost of true negative (default: 0.0), use negative for benefit
+            benefit_tp: Benefit of true positive (alternative to negative cost_tp)
+            benefit_tn: Benefit of true negative (alternative to negative cost_tn)
+
+        Returns:
+            Dict containing detailed cost-benefit breakdown
+
+        Example:
+            >>> cm = DConfusion(tp=80, fn=20, fp=10, tn=90)
+            >>> summary = cm.get_cost_benefit_summary(
+            ...     cost_fp=100,  # $100 cost for false alarm
+            ...     cost_fn=1000, # $1000 cost for missed detection
+            ...     benefit_tp=50, # $50 benefit for correct detection
+            ...     benefit_tn=10  # $10 benefit for correct rejection
+            ... )
+        """
+        if self.n_classes != 2:
+            raise ValueError("Cost-sensitive analysis is only available for binary classification")
+
+        # Convert benefits to negative costs if provided
+        if benefit_tp is not None:
+            cost_tp = -benefit_tp
+        if benefit_tn is not None:
+            cost_tn = -benefit_tn
+
+        total_cost = self.get_misclassification_cost(cost_fp, cost_fn, cost_tp, cost_tn)
+        avg_cost = total_cost / self.total
+
+        # Calculate individual components
+        tp_component = cost_tp * self.true_positive
+        tn_component = cost_tn * self.true_negative
+        fp_component = cost_fp * self.false_positive
+        fn_component = cost_fn * self.false_negative
+
+        # Calculate what a perfect classifier would achieve
+        perfect_cost = (cost_tp * (self.true_positive + self.false_negative) +
+                       cost_tn * (self.true_negative + self.false_positive))
+
+        # Calculate what always predicting positive would cost
+        all_positive_cost = (cost_tp * (self.true_positive + self.false_negative) +
+                            cost_fp * (self.false_positive + self.true_negative))
+
+        # Calculate what always predicting negative would cost
+        all_negative_cost = (cost_fn * (self.true_positive + self.false_negative) +
+                            cost_tn * (self.false_positive + self.true_negative))
+
+        # Calculate what random guessing would cost (assuming 50/50 split)
+        random_cost = (cost_tp * (self.true_positive + self.false_negative) / 2 +
+                      cost_fp * (self.false_positive + self.true_negative) / 2 +
+                      cost_fn * (self.true_positive + self.false_negative) / 2 +
+                      cost_tn * (self.false_positive + self.true_negative) / 2)
+
+        return {
+            'total_cost': total_cost,
+            'average_cost': avg_cost,
+            'tp_component': tp_component,
+            'tn_component': tn_component,
+            'fp_component': fp_component,
+            'fn_component': fn_component,
+            'perfect_classifier_cost': perfect_cost,
+            'all_positive_cost': all_positive_cost,
+            'all_negative_cost': all_negative_cost,
+            'random_classifier_cost': random_cost,
+            'savings_vs_perfect': total_cost - perfect_cost,
+            'savings_vs_all_positive': all_positive_cost - total_cost,
+            'savings_vs_all_negative': all_negative_cost - total_cost,
+            'savings_vs_random': random_cost - total_cost,
+            'cost_improvement_over_random': (random_cost - total_cost) / abs(random_cost) if random_cost != 0 else 0
+        }
+
+    def find_optimal_metric_for_cost(self, cost_fp: float = 1.0, cost_fn: float = 1.0) -> Dict[str, Any]:
+        """
+        Determine which standard metric best aligns with your cost structure.
+
+        This method analyzes your cost ratio and recommends which metric to optimize
+        for your specific use case.
+
+        Args:
+            cost_fp: Cost of false positive (default: 1.0)
+            cost_fn: Cost of false negative (default: 1.0)
+
+        Returns:
+            Dict containing recommended metrics and analysis
+
+        Example:
+            >>> cm = DConfusion(tp=80, fn=20, fp=10, tn=90)
+            >>> # When FN is very costly (e.g., medical diagnosis)
+            >>> rec = cm.find_optimal_metric_for_cost(cost_fp=1, cost_fn=10)
+            >>> print(rec['primary_recommendation'])
+            'recall'
+        """
+        if self.n_classes != 2:
+            raise ValueError("Cost-sensitive analysis is only available for binary classification")
+
+        cost_ratio = cost_fn / cost_fp if cost_fp != 0 else float('inf')
+
+        # Determine recommendations based on cost ratio
+        if cost_ratio > 5:
+            primary_metric = 'recall'
+            explanation = (f"False negatives are {cost_ratio:.1f}x more costly than false positives. "
+                         "Prioritize RECALL (sensitivity) to minimize missed positive cases.")
+            secondary_metrics = ['f2_score', 'specificity']
+        elif cost_ratio < 0.2:
+            primary_metric = 'precision'
+            explanation = (f"False positives are {1/cost_ratio:.1f}x more costly than false negatives. "
+                         "Prioritize PRECISION to minimize false alarms.")
+            secondary_metrics = ['specificity', 'f1_score']
+        elif 0.5 <= cost_ratio <= 2:
+            primary_metric = 'f1_score'
+            explanation = (f"Costs are relatively balanced (FN/FP ratio: {cost_ratio:.2f}). "
+                         "F1 score provides balanced optimization.")
+            secondary_metrics = ['matthews_correlation_coefficient', 'accuracy']
+        else:
+            primary_metric = 'f1_score'
+            explanation = (f"Cost ratio is {cost_ratio:.2f}. F1 score is recommended, but consider "
+                         f"{'recall' if cost_ratio > 1 else 'precision'} as secondary metric.")
+            secondary_metrics = ['recall' if cost_ratio > 1 else 'precision', 'matthews_correlation_coefficient']
+
+        # Calculate current metric values
+        current_values = {}
+        for metric in [primary_metric] + secondary_metrics:
+            try:
+                getter = f'get_{metric}'
+                if hasattr(self, getter):
+                    current_values[metric] = getattr(self, getter)()
+            except:
+                pass
+
+        # Calculate cost-weighted F-beta score
+        if cost_ratio != 0:
+            beta = math.sqrt(cost_ratio)
+            precision = self.get_precision()
+            recall = self.get_recall()
+            denominator = (beta ** 2 * precision) + recall
+            if denominator > 0:
+                f_beta = (1 + beta ** 2) * precision * recall / denominator
+            else:
+                f_beta = 0.0
+        else:
+            f_beta = self.get_precision()
+
+        return {
+            'cost_ratio_fn_to_fp': cost_ratio,
+            'primary_recommendation': primary_metric,
+            'secondary_recommendations': secondary_metrics,
+            'explanation': explanation,
+            'current_metric_values': current_values,
+            'cost_weighted_f_beta': f_beta,
+            'beta_value': math.sqrt(cost_ratio) if cost_ratio != 0 else 0,
+            'interpretation': self._interpret_cost_ratio(cost_ratio)
+        }
+
+    def _interpret_cost_ratio(self, cost_ratio: float) -> str:
+        """Helper method to interpret cost ratios."""
+        if cost_ratio > 10:
+            return "Extremely high cost for false negatives - typical in critical medical diagnoses, safety systems"
+        elif cost_ratio > 5:
+            return "High cost for false negatives - typical in fraud detection, disease screening"
+        elif cost_ratio > 2:
+            return "Moderate preference for avoiding false negatives"
+        elif 0.5 <= cost_ratio <= 2:
+            return "Balanced costs - both error types matter equally"
+        elif cost_ratio > 0.1:
+            return "Moderate preference for avoiding false positives"
+        elif cost_ratio > 0.01:
+            return "High cost for false positives - typical in spam detection, marketing campaigns"
+        else:
+            return "Extremely high cost for false positives - false alarms are very expensive"
+
+    def compare_cost_with(self, other, cost_fp: float = 1.0, cost_fn: float = 1.0,
+                          cost_tp: float = 0.0, cost_tn: float = 0.0) -> Dict[str, Any]:
+        """
+        Compare the cost-effectiveness of two models based on custom cost structure.
+
+        Args:
+            other: Another DConfusion object to compare with
+            cost_fp: Cost of false positive (default: 1.0)
+            cost_fn: Cost of false negative (default: 1.0)
+            cost_tp: Cost/benefit of true positive (default: 0.0)
+            cost_tn: Cost/benefit of true negative (default: 0.0)
+
+        Returns:
+            Dict containing detailed cost comparison
+
+        Example:
+            >>> model_a = DConfusion(tp=80, fn=20, fp=10, tn=90)
+            >>> model_b = DConfusion(tp=85, fn=15, fp=20, tn=80)
+            >>> comparison = model_a.compare_cost_with(
+            ...     model_b,
+            ...     cost_fp=100,
+            ...     cost_fn=1000
+            ... )
+            >>> print(f"Model A saves ${comparison['cost_savings']:.2f}")
+        """
+        if self.n_classes != 2 or other.n_classes != 2:
+            raise ValueError("Cost-sensitive comparison is only available for binary classification")
+
+        cost1 = self.get_misclassification_cost(cost_fp, cost_fn, cost_tp, cost_tn)
+        cost2 = other.get_misclassification_cost(cost_fp, cost_fn, cost_tp, cost_tn)
+
+        avg_cost1 = cost1 / self.total if self.total > 0 else 0
+        avg_cost2 = cost2 / other.total if other.total > 0 else 0
+
+        # Calculate cost savings
+        cost_savings = cost2 - cost1
+        relative_savings = cost_savings / abs(cost2) if cost2 != 0 else 0
+
+        # Determine better model
+        if cost1 < cost2:
+            better_model = 'model1'
+            recommendation = "Model 1 is more cost-effective"
+        elif cost2 < cost1:
+            better_model = 'model2'
+            recommendation = "Model 2 is more cost-effective"
+        else:
+            better_model = 'tie'
+            recommendation = "Both models have equal cost"
+
+        return {
+            'model1_total_cost': cost1,
+            'model2_total_cost': cost2,
+            'model1_average_cost': avg_cost1,
+            'model2_average_cost': avg_cost2,
+            'cost_difference': cost1 - cost2,
+            'cost_savings': cost_savings,
+            'relative_savings_percent': relative_savings * 100,
+            'better_model': better_model,
+            'recommendation': recommendation,
+            'cost_structure': {
+                'cost_fp': cost_fp,
+                'cost_fn': cost_fn,
+                'cost_tp': cost_tp,
+                'cost_tn': cost_tn,
+                'cost_ratio_fn_to_fp': cost_fn / cost_fp if cost_fp != 0 else float('inf')
+            }
+        }
