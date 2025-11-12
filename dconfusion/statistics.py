@@ -353,7 +353,7 @@ class MetricInferenceMixin:
     """Mixin class for inferring confusion matrices from metrics."""
 
     @classmethod
-    def infer_from_metrics(
+    def from_metrics(
         cls,
         total_samples: int,
         accuracy: Optional[float] = None,
@@ -365,7 +365,7 @@ class MetricInferenceMixin:
         **kwargs
     ):
         """
-        Infer a confusion matrix from a set of metrics.
+        Reconstruct a confusion matrix from a set of metrics (exact solution).
 
         Given enough constraints, this method attempts to reverse-engineer a
         confusion matrix that satisfies the provided metrics. This is useful for:
@@ -391,7 +391,7 @@ class MetricInferenceMixin:
 
         Example:
             >>> # Given accuracy, precision, and recall
-            >>> cm = DConfusion.infer_from_metrics(
+            >>> cm = DConfusion.from_metrics(
             ...     total_samples=100,
             ...     accuracy=0.85,
             ...     precision=0.80,
@@ -400,11 +400,498 @@ class MetricInferenceMixin:
             >>> print(cm)
 
         Note:
-            - At least 3 independent metrics are typically needed
+            - At least 3 independent metrics are typically needed (plus total_samples)
             - Some metric combinations may have multiple solutions
             - The method returns one valid solution if multiple exist
         """
-        raise NotImplementedError("Metric inference is coming in the next iteration")
+        if total_samples <= 0:
+            raise ValueError("total_samples must be positive")
+
+        # Count provided metrics
+        provided_metrics = {
+            'accuracy': accuracy,
+            'precision': precision,
+            'recall': recall,
+            'specificity': specificity,
+            'f1_score': f1_score,
+            'prevalence': prevalence
+        }
+
+        # Filter out None values
+        provided = {k: v for k, v in provided_metrics.items() if v is not None}
+
+        if len(provided) < 3:
+            raise ValueError(
+                f"Need at least 3 metrics to reconstruct confusion matrix. "
+                f"Got {len(provided)}: {list(provided.keys())}"
+            )
+
+        # Validate metric ranges
+        for metric_name, value in provided.items():
+            if not 0 <= value <= 1:
+                raise ValueError(f"{metric_name} must be between 0 and 1, got {value}")
+
+        # Try to solve the system of equations
+        result = cls._solve_confusion_matrix(
+            total_samples, accuracy, precision, recall,
+            specificity, f1_score, prevalence
+        )
+
+        if result is None:
+            raise ValueError(
+                "No valid confusion matrix exists for the given metrics. "
+                "The constraints may be contradictory."
+            )
+
+        tp, fn, fp, tn = result
+
+        # Validate that we got non-negative integers
+        if any(x < 0 for x in [tp, fn, fp, tn]):
+            raise ValueError(
+                "No valid confusion matrix exists for the given metrics. "
+                "Solution contains negative values."
+            )
+
+        # Import here to avoid circular dependency
+        from .DConfusion import DConfusion
+        return DConfusion(
+            true_positive=tp,
+            false_negative=fn,
+            false_positive=fp,
+            true_negative=tn
+        )
+
+    @staticmethod
+    def _solve_confusion_matrix(
+        N: int,
+        accuracy: Optional[float],
+        precision: Optional[float],
+        recall: Optional[float],
+        specificity: Optional[float],
+        f1_score: Optional[float],
+        prevalence: Optional[float]
+    ) -> Optional[Tuple[int, int, int, int]]:
+        """
+        Solve for TP, FN, FP, TN given constraints.
+
+        Returns:
+            Tuple of (TP, FN, FP, TN) as integers, or None if no solution exists
+        """
+        # Strategy: Try different approaches based on which metrics are provided
+
+        # Approach 1: Precision, Recall, Total (most common case)
+        if precision is not None and recall is not None and prevalence is not None:
+            # P = TP / (TP + FP) => TP = P * (TP + FP)
+            # R = TP / (TP + FN) => TP = R * (TP + FN)
+            # Prevalence = (TP + FN) / N => TP + FN = Prevalence * N
+
+            actual_positives = round(prevalence * N)  # TP + FN
+            tp = round(recall * actual_positives)
+            fn = actual_positives - tp
+
+            # From precision: TP = P * (TP + FP) => FP = TP/P - TP = TP(1/P - 1)
+            if precision > 0:
+                predicted_positives = round(tp / precision)
+                fp = predicted_positives - tp
+            else:
+                fp = 0
+
+            tn = N - tp - fn - fp
+
+            if all(x >= 0 for x in [tp, fn, fp, tn]) and tp + fn + fp + tn == N:
+                return (tp, fn, fp, tn)
+
+        # Approach 2: Accuracy, Recall, Prevalence
+        if accuracy is not None and recall is not None and prevalence is not None:
+            # Acc = (TP + TN) / N
+            # R = TP / (TP + FN)
+            # Prev = (TP + FN) / N
+
+            actual_positives = round(prevalence * N)
+            tp = round(recall * actual_positives)
+            fn = actual_positives - tp
+
+            correct = round(accuracy * N)
+            tn = correct - tp
+            fp = N - tp - fn - tn
+
+            if all(x >= 0 for x in [tp, fn, fp, tn]) and tp + fn + fp + tn == N:
+                return (tp, fn, fp, tn)
+
+        # Approach 3: Precision, Recall, Accuracy
+        if precision is not None and recall is not None and accuracy is not None:
+            # This is more complex - we need to search
+            # Acc = (TP + TN) / N
+            # P = TP / (TP + FP)
+            # R = TP / (TP + FN)
+
+            # Try different values of TP
+            for tp in range(N + 1):
+                if recall > 0:
+                    actual_positives = round(tp / recall)
+                    fn = actual_positives - tp
+                else:
+                    continue
+
+                if precision > 0:
+                    predicted_positives = round(tp / precision)
+                    fp = predicted_positives - tp
+                else:
+                    fp = 0
+
+                tn = N - tp - fn - fp
+
+                if all(x >= 0 for x in [tp, fn, fp, tn]) and tp + fn + fp + tn == N:
+                    # Check accuracy
+                    calc_acc = (tp + tn) / N
+                    if abs(calc_acc - accuracy) < 0.01:  # Allow small tolerance
+                        return (tp, fn, fp, tn)
+
+        # Approach 4: Recall, Specificity, Prevalence
+        if recall is not None and specificity is not None and prevalence is not None:
+            # R = TP / (TP + FN)
+            # Spec = TN / (TN + FP)
+            # Prev = (TP + FN) / N
+
+            actual_positives = round(prevalence * N)
+            actual_negatives = N - actual_positives
+
+            tp = round(recall * actual_positives)
+            fn = actual_positives - tp
+
+            tn = round(specificity * actual_negatives)
+            fp = actual_negatives - tn
+
+            if all(x >= 0 for x in [tp, fn, fp, tn]) and tp + fn + fp + tn == N:
+                return (tp, fn, fp, tn)
+
+        # Approach 5: Use optimization for complex cases
+        if len([x for x in [accuracy, precision, recall, specificity, f1_score, prevalence] if x is not None]) >= 3:
+            result = MetricInferenceMixin._optimize_confusion_matrix(
+                N, accuracy, precision, recall, specificity, f1_score, prevalence
+            )
+            if result is not None:
+                return result
+
+        return None
+
+    @staticmethod
+    def _optimize_confusion_matrix(
+        N: int,
+        accuracy: Optional[float],
+        precision: Optional[float],
+        recall: Optional[float],
+        specificity: Optional[float],
+        f1_score: Optional[float],
+        prevalence: Optional[float]
+    ) -> Optional[Tuple[int, int, int, int]]:
+        """
+        Use numerical optimization to find confusion matrix values.
+        """
+        def objective(x):
+            """Minimize sum of squared errors for all constraints."""
+            tp, fn, fp, tn = x
+
+            # Ensure non-negative and sum to N
+            if any(val < 0 for val in x):
+                return 1e10
+
+            total_error = (tp + fn + fp + tn - N) ** 2
+
+            errors = []
+
+            if accuracy is not None:
+                calc_acc = (tp + tn) / N if N > 0 else 0
+                errors.append((calc_acc - accuracy) ** 2)
+
+            if precision is not None and (tp + fp) > 0:
+                calc_prec = tp / (tp + fp)
+                errors.append((calc_prec - precision) ** 2)
+
+            if recall is not None and (tp + fn) > 0:
+                calc_rec = tp / (tp + fn)
+                errors.append((calc_rec - recall) ** 2)
+
+            if specificity is not None and (tn + fp) > 0:
+                calc_spec = tn / (tn + fp)
+                errors.append((calc_spec - specificity) ** 2)
+
+            if prevalence is not None:
+                calc_prev = (tp + fn) / N if N > 0 else 0
+                errors.append((calc_prev - prevalence) ** 2)
+
+            if f1_score is not None and (tp + fp) > 0 and (tp + fn) > 0:
+                calc_prec = tp / (tp + fp)
+                calc_rec = tp / (tp + fn)
+                if calc_prec + calc_rec > 0:
+                    calc_f1 = 2 * calc_prec * calc_rec / (calc_prec + calc_rec)
+                    errors.append((calc_f1 - f1_score) ** 2)
+
+            return total_error + sum(errors) * 100
+
+        # Initial guess: distribute samples based on accuracy
+        if accuracy is not None:
+            correct = int(accuracy * N)
+            incorrect = N - correct
+            x0 = [correct // 2, incorrect // 2, incorrect // 2, correct // 2]
+        else:
+            x0 = [N // 4, N // 4, N // 4, N // 4]
+
+        # Bounds: all values between 0 and N
+        bounds = [(0, N)] * 4
+
+        # Optimize
+        result = minimize(objective, x0, method='L-BFGS-B', bounds=bounds)
+
+        if result.success and result.fun < 1.0:  # Small error tolerance
+            tp, fn, fp, tn = [round(x) for x in result.x]
+
+            # Adjust to ensure exact sum to N
+            total = tp + fn + fp + tn
+            if total != N:
+                # Adjust the largest value
+                vals = [(tp, 0), (fn, 1), (fp, 2), (tn, 3)]
+                vals.sort(reverse=True)
+                diff = total - N
+                if vals[0][0] >= diff:
+                    idx = vals[0][1]
+                    if idx == 0:
+                        tp -= diff
+                    elif idx == 1:
+                        fn -= diff
+                    elif idx == 2:
+                        fp -= diff
+                    else:
+                        tn -= diff
+
+            if all(x >= 0 for x in [tp, fn, fp, tn]) and tp + fn + fp + tn == N:
+                return (tp, fn, fp, tn)
+
+        return None
+
+    @classmethod
+    def infer_metrics(
+        cls,
+        total_samples: int,
+        accuracy: Optional[float] = None,
+        precision: Optional[float] = None,
+        recall: Optional[float] = None,
+        specificity: Optional[float] = None,
+        prevalence: Optional[float] = None,
+        confidence_level: float = 0.95,
+        n_simulations: int = 10000,
+        random_state: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Infer missing metrics with confidence intervals from partial information.
+
+        This method uses statistical inference to estimate missing metrics when you have
+        incomplete information. Unlike from_metrics() which finds an exact solution,
+        this method provides probabilistic estimates with confidence intervals.
+
+        Args:
+            total_samples: Total number of samples (required)
+            accuracy: Overall accuracy (0-1), if known
+            precision: Positive predictive value (0-1), if known
+            recall: True positive rate (0-1), if known
+            specificity: True negative rate (0-1), if known
+            prevalence: Proportion of positive class (0-1), if known
+            confidence_level: Confidence level for intervals (default: 0.95)
+            n_simulations: Number of Monte Carlo simulations (default: 10000)
+            random_state: Random seed for reproducibility
+
+        Returns:
+            Dict containing:
+                - provided_metrics: Dict of metrics that were provided as input
+                - inferred_metrics: Dict of inferred metrics with confidence intervals
+                - possible_ranges: Theoretical min/max for each metric
+                - method: Description of inference method used
+                - n_valid_samples: Number of valid confusion matrices sampled
+
+        Raises:
+            ValueError: If insufficient information provided
+            ValueError: If metrics are contradictory
+
+        Example:
+            >>> # Given only accuracy and prevalence
+            >>> result = DConfusion.infer_metrics(
+            ...     total_samples=100,
+            ...     accuracy=0.85,
+            ...     prevalence=0.4
+            ... )
+            >>> print(f"Precision: {result['inferred_metrics']['precision']['mean']:.3f}")
+            >>> print(f"95% CI: [{result['inferred_metrics']['precision']['ci_lower']:.3f}, "
+            ...       f"{result['inferred_metrics']['precision']['ci_upper']:.3f}]")
+        """
+        if total_samples <= 0:
+            raise ValueError("total_samples must be positive")
+
+        # Collect provided metrics
+        provided = {}
+        if accuracy is not None:
+            provided['accuracy'] = accuracy
+        if precision is not None:
+            provided['precision'] = precision
+        if recall is not None:
+            provided['recall'] = recall
+        if specificity is not None:
+            provided['specificity'] = specificity
+        if prevalence is not None:
+            provided['prevalence'] = prevalence
+
+        if len(provided) < 2:
+            raise ValueError(
+                f"Need at least 2 metrics to infer others. "
+                f"Got {len(provided)}: {list(provided.keys())}"
+            )
+
+        # Validate ranges
+        for metric_name, value in provided.items():
+            if not 0 <= value <= 1:
+                raise ValueError(f"{metric_name} must be between 0 and 1, got {value}")
+
+        # Monte Carlo simulation
+        rng = np.random.RandomState(random_state)
+        valid_matrices = []
+
+        # Generate many possible confusion matrices consistent with constraints
+        for _ in range(n_simulations):
+            # Sample TP, FN, FP, TN that satisfy known constraints
+            cm = cls._sample_confusion_matrix_constrained(
+                total_samples, provided, rng
+            )
+
+            if cm is not None:
+                valid_matrices.append(cm)
+
+        if len(valid_matrices) < 100:
+            raise ValueError(
+                f"Could not generate enough valid confusion matrices ({len(valid_matrices)}/{n_simulations}). "
+                "Constraints may be too restrictive or contradictory."
+            )
+
+        # Calculate statistics for all metrics
+        from .DConfusion import DConfusion
+
+        all_metrics = {
+            'accuracy': [],
+            'precision': [],
+            'recall': [],
+            'specificity': [],
+            'f1_score': [],
+            'prevalence': []
+        }
+
+        for tp, fn, fp, tn in valid_matrices:
+            try:
+                cm = DConfusion(
+                    true_positive=tp,
+                    false_negative=fn,
+                    false_positive=fp,
+                    true_negative=tn
+                )
+
+                all_metrics['accuracy'].append(cm.get_accuracy())
+                all_metrics['precision'].append(cm.get_precision())
+                all_metrics['recall'].append(cm.get_recall())
+                all_metrics['specificity'].append(cm.get_specificity())
+                all_metrics['f1_score'].append(cm.get_f1_score())
+                all_metrics['prevalence'].append((tp + fn) / total_samples)
+            except (ValueError, ZeroDivisionError):
+                continue
+
+        # Calculate confidence intervals for inferred metrics
+        alpha = 1 - confidence_level
+        inferred_metrics = {}
+
+        for metric_name, values in all_metrics.items():
+            if metric_name not in provided and len(values) > 0:
+                values_array = np.array(values)
+                inferred_metrics[metric_name] = {
+                    'mean': float(np.mean(values_array)),
+                    'median': float(np.median(values_array)),
+                    'std': float(np.std(values_array)),
+                    'ci_lower': float(np.percentile(values_array, alpha / 2 * 100)),
+                    'ci_upper': float(np.percentile(values_array, (1 - alpha / 2) * 100)),
+                    'min': float(np.min(values_array)),
+                    'max': float(np.max(values_array))
+                }
+
+        return {
+            'provided_metrics': provided,
+            'inferred_metrics': inferred_metrics,
+            'confidence_level': confidence_level,
+            'n_valid_samples': len(valid_matrices),
+            'n_simulations': n_simulations,
+            'method': 'Monte Carlo simulation with constraint satisfaction'
+        }
+
+    @staticmethod
+    def _sample_confusion_matrix_constrained(
+        N: int,
+        constraints: Dict[str, float],
+        rng: np.random.RandomState
+    ) -> Optional[Tuple[int, int, int, int]]:
+        """
+        Sample a random confusion matrix that satisfies the given constraints.
+
+        Returns:
+            Tuple of (TP, FN, FP, TN) or None if sampling failed
+        """
+        max_attempts = 100
+
+        for _ in range(max_attempts):
+            # Start with random distribution
+            if 'prevalence' in constraints:
+                actual_pos = int(constraints['prevalence'] * N)
+            else:
+                actual_pos = rng.randint(1, N)
+
+            actual_neg = N - actual_pos
+
+            # Sample TP based on recall if available
+            if 'recall' in constraints:
+                recall = constraints['recall']
+                # Add some noise around the exact value
+                recall_sample = np.clip(rng.normal(recall, 0.02), 0, 1)
+                tp = int(recall_sample * actual_pos)
+            else:
+                tp = rng.randint(0, actual_pos + 1)
+
+            fn = actual_pos - tp
+
+            # Sample TN based on specificity if available
+            if 'specificity' in constraints:
+                spec = constraints['specificity']
+                spec_sample = np.clip(rng.normal(spec, 0.02), 0, 1)
+                tn = int(spec_sample * actual_neg)
+            else:
+                tn = rng.randint(0, actual_neg + 1)
+
+            fp = actual_neg - tn
+
+            # Validate constraints
+            if not all(x >= 0 for x in [tp, fn, fp, tn]):
+                continue
+
+            if tp + fn + fp + tn != N:
+                continue
+
+            # Check accuracy constraint
+            if 'accuracy' in constraints:
+                calc_acc = (tp + tn) / N
+                if abs(calc_acc - constraints['accuracy']) > 0.02:
+                    continue
+
+            # Check precision constraint
+            if 'precision' in constraints and (tp + fp) > 0:
+                calc_prec = tp / (tp + fp)
+                if abs(calc_prec - constraints['precision']) > 0.02:
+                    continue
+
+            return (tp, fn, fp, tn)
+
+        return None
 
     def check_metric_consistency(
         self,

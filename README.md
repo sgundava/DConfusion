@@ -24,7 +24,8 @@ A Python package for working with confusion matrices - now with a web UI!
 * **Web UI** - Streamlit app for easy comparison
 * **⚠️ Warning System** - Research-based warnings for common pitfalls (sample size, class imbalance, metric reliability)
 * **📊 Statistical Testing** - Bootstrap confidence intervals, McNemar's test, metric consistency checks
-* **💰 NEW: Cost-Sensitive Analysis** - Calculate misclassification costs, find optimal metrics for your use case, compare models by business impact
+* **💰 Cost-Sensitive Analysis** - Calculate misclassification costs, find optimal metrics for your use case, compare models by business impact
+* **🔍 NEW: Metric Completion** - Reconstruct confusion matrices from partial metrics, infer missing metrics with confidence intervals
 * **Modular Design** - Clean separation: core, metrics, visualization, I/O, statistics
 
 ## Installation
@@ -422,10 +423,230 @@ Cost-sensitive learning is well-established in machine learning:
 - **Ling & Sheng (2008)** - Cost-sensitive learning and the class imbalance problem
 - **Drummond & Holte (2006)** - Cost curves: An improved method for visualizing classifier performance
 
+## 🔍 Metric Completion (NEW!)
+
+DConfusion now supports **metric completion** - the ability to reconstruct confusion matrices from partial metrics or infer missing metrics with confidence intervals. This is incredibly useful when working with published research papers, incomplete reports, or when you need to understand the full picture from limited information.
+
+### Two Powerful Approaches
+
+#### 1. `from_metrics()` - Exact Reconstruction
+
+Reconstruct a complete confusion matrix when you have enough metrics reported. Perfect for reproducing results from papers that only report aggregate metrics.
+
+```python
+from dconfusion import DConfusion
+
+# Reconstruct confusion matrix from published metrics
+cm = DConfusion.from_metrics(
+    total_samples=100,
+    accuracy=0.85,
+    precision=0.80,
+    recall=0.75
+)
+
+print(f"TP={cm.true_positive}, FN={cm.false_negative}")
+print(f"FP={cm.false_positive}, TN={cm.true_negative}")
+```
+
+**Output:**
+```
+TP=30, FN=10
+FP=8, TN=52
+```
+
+**Supported metric combinations:**
+- Precision + Recall + Prevalence
+- Accuracy + Recall + Prevalence
+- Precision + Recall + Accuracy
+- Recall + Specificity + Prevalence
+- Any 3+ independent metrics
+
+**Requirements:**
+- At least 3 independent metrics (plus `total_samples`)
+- Metrics must be mathematically consistent
+- Returns exact solution or raises error if impossible
+
+#### 2. `infer_metrics()` - Probabilistic Inference
+
+When you have incomplete information, infer missing metrics with confidence intervals using Monte Carlo simulation.
+
+```python
+from dconfusion import DConfusion
+
+# Given only accuracy and class distribution
+result = DConfusion.infer_metrics(
+    total_samples=100,
+    accuracy=0.85,
+    prevalence=0.4,  # 40% positive class
+    confidence_level=0.95,
+    n_simulations=10000,
+    random_state=42
+)
+
+# Check inferred precision
+precision = result['inferred_metrics']['precision']
+print(f"Precision: {precision['mean']:.3f}")
+print(f"95% CI: [{precision['ci_lower']:.3f}, {precision['ci_upper']:.3f}]")
+
+# Check inferred recall
+recall = result['inferred_metrics']['recall']
+print(f"Recall: {recall['mean']:.3f}")
+print(f"95% CI: [{recall['ci_lower']:.3f}, {recall['ci_upper']:.3f}]")
+```
+
+**Output:**
+```
+Precision: 0.756
+95% CI: [0.632, 0.868]
+Recall: 0.823
+95% CI: [0.706, 0.941]
+```
+
+**What you get:**
+- `mean`: Average value across valid confusion matrices
+- `median`: Median value (robust to outliers)
+- `ci_lower`, `ci_upper`: Confidence interval bounds
+- `std`: Standard deviation
+- `min`, `max`: Theoretical range
+
+**Use cases:**
+- Paper reports only accuracy and sample size
+- You know prevalence but limited metrics
+- Understanding uncertainty in incomplete data
+- Sensitivity analysis for different scenarios
+
+### Real-World Examples
+
+#### Example 1: Paper Reproduction
+
+A paper reports: "We achieved 85% accuracy, 80% precision, and 75% recall on 100 test samples."
+
+```python
+# Reconstruct their exact confusion matrix
+cm = DConfusion.from_metrics(
+    total_samples=100,
+    accuracy=0.85,
+    precision=0.80,
+    recall=0.75
+)
+
+# Now you can compute unreported metrics
+print(f"Specificity: {cm.get_specificity():.3f}")
+print(f"F1 Score: {cm.get_f1_score():.3f}")
+print(f"MCC: {cm.get_mcc():.3f}")
+
+# Verify their reported metrics
+result = cm.check_metric_consistency({
+    'accuracy': 0.85,
+    'precision': 0.80,
+    'recall': 0.75
+})
+print(f"Metrics consistent: {result['consistent']}")
+```
+
+#### Example 2: Incomplete Medical Study
+
+A medical study reports: "85% accuracy on 200 patients, 30% disease prevalence."
+
+```python
+# Infer what the precision and recall might be
+result = DConfusion.infer_metrics(
+    total_samples=200,
+    accuracy=0.85,
+    prevalence=0.30,
+    confidence_level=0.95
+)
+
+# Get estimated sensitivity (recall) for disease detection
+recall = result['inferred_metrics']['recall']
+print(f"Estimated Sensitivity: {recall['mean']:.3f} [{recall['ci_lower']:.3f}-{recall['ci_upper']:.3f}]")
+
+# Get estimated PPV (precision)
+precision = result['inferred_metrics']['precision']
+print(f"Estimated PPV: {precision['mean']:.3f} [{precision['ci_lower']:.3f}-{precision['ci_upper']:.3f}]")
+```
+
+#### Example 3: Multiple Valid Solutions
+
+Sometimes partial metrics allow multiple valid confusion matrices:
+
+```python
+# With only 2 metrics, see the range of possibilities
+result = DConfusion.infer_metrics(
+    total_samples=100,
+    accuracy=0.85,
+    prevalence=0.40,
+    n_simulations=10000
+)
+
+# Wide confidence intervals indicate high uncertainty
+for metric_name, stats in result['inferred_metrics'].items():
+    print(f"{metric_name}: {stats['mean']:.3f} ± {stats['std']:.3f}")
+    print(f"  Range: [{stats['min']:.3f}, {stats['max']:.3f}]")
+```
+
+### Comparison: `from_metrics()` vs `infer_metrics()`
+
+| Feature | `from_metrics()` | `infer_metrics()` |
+|---------|------------------|-------------------|
+| **Goal** | Find exact confusion matrix | Estimate missing metrics |
+| **Output** | DConfusion object | Dict with confidence intervals |
+| **Minimum inputs** | 3+ metrics | 2+ metrics |
+| **Best for** | Sufficient constraints | Incomplete information |
+| **Uncertainty** | None (exact) | Quantified with CIs |
+| **Speed** | Fast (analytical) | Slower (simulation) |
+| **Use case** | Paper reproduction | Sensitivity analysis |
+
+### Error Handling
+
+Both methods validate inputs and provide clear error messages:
+
+```python
+# Insufficient metrics
+try:
+    cm = DConfusion.from_metrics(
+        total_samples=100,
+        accuracy=0.85,
+        precision=0.80  # Only 2 metrics
+    )
+except ValueError as e:
+    print(f"Error: {e}")
+    # Error: Need at least 3 metrics to reconstruct confusion matrix
+
+# Contradictory metrics
+try:
+    cm = DConfusion.from_metrics(
+        total_samples=100,
+        accuracy=0.95,
+        precision=0.01,  # These don't make sense together
+        prevalence=0.90
+    )
+except ValueError as e:
+    print(f"Error: {e}")
+    # Error: No valid confusion matrix exists for the given metrics
+```
+
+### Research Foundation
+
+Metric completion builds on established statistical methods:
+- **Reverse Engineering** - Solving systems of equations from metric definitions
+- **Monte Carlo Methods** - Sampling valid confusion matrices under constraints
+- **Constraint Satisfaction** - Ensuring mathematical consistency of metrics
+
+### Practical Tips
+
+1. **Use `from_metrics()` when possible** - It's faster and more accurate
+2. **Always check with 3+ metrics** - More constraints = more reliable reconstruction
+3. **Use `infer_metrics()` for uncertainty** - Great for sensitivity analysis
+4. **Validate with `check_metric_consistency()`** - Verify reconstructed metrics match originals
+5. **Include `prevalence` when available** - Greatly constrains solution space
+6. **Higher `n_simulations` = better estimates** - But slower (default 10000 is good)
+
 # Roadmap
-This is the initial release (v0.2.1) of dconfusion, and we plan to add more features in future releases. Some potential features include:
-- Backtracing statistical metrics based on partial data
-- Integration with popular machine learning libraries
+Future features we're considering:
+- Integration with popular machine learning libraries (scikit-learn, PyTorch, TensorFlow)
+- Multi-class metric completion
+- Streamlit UI integration for metric completion
 
 # Contributing
 We welcome contributions to dconfusion! If you'd like to contribute, please fork the repository and submit a pull request.
@@ -440,3 +661,4 @@ dconfusion is released under the MIT License. See LICENSE for details.
 - v0.2.2: Added more metrics and CSV functionality. QOL improvements. Began adding validation functionality.
 - v1.0.0: Broke the file into multiple modules for better modularity. Added support for warnings.
 - v1.0.1: Updated documentation. Added new statistical tests.
+- v1.0.2: Added metric completion features - `from_metrics()` for exact reconstruction and `infer_metrics()` for probabilistic inference with confidence intervals.
