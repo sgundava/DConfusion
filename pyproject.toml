@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dconfusion"
-version = "1.0.1"
+version = "1.0.1a"
 description = "A package for working with confusion matrices."
 readme = "README.md"
 requires-python = ">=3.8"
@@ -25,7 +25,7 @@ dependencies = [
 
 classifiers = [
     # How mature is this project?
-    "Development Status :: 1 - Planning",
+    "Development Status :: 5 - Production/Stable",
 
     # Indicate who your project is intended for
     "Intended Audience :: Developers",

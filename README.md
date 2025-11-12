@@ -263,10 +263,6 @@ The Streamlit app includes an interactive **Statistical Testing** tab where you 
 - Visualize results with clear interpretations
 - Adjust parameters (confidence level, bootstrap samples, significance level)
 
-```bash
-streamlit run app/streamlit_app.py
-```
-
 ### Research Foundation
 
 The statistical methods are based on established research:
