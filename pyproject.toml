@@ -20,7 +20,7 @@ maintainers = [
 ]
 keywords = ["confusion", "matrix"]
 dependencies = [
-  "numpy", "typing", "matplotlib", "scipy", 'csv'
+  "numpy", "matplotlib", "scipy"
 ]
 
 classifiers = [
