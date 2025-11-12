@@ -7,6 +7,7 @@ Provides metric completion tools: exact reconstruction and probabilistic inferen
 import streamlit as st
 import pandas as pd
 from dconfusion import DConfusion
+from utils.session import add_matrix
 
 
 def render_metric_completion_tab():
@@ -81,32 +82,44 @@ def render_metric_completion_tab():
                         prevalence=prevalence
                     )
 
+                    # Store in session state so it persists across reruns
+                    st.session_state.reconstructed_cm = cm
                     st.success("✅ Successfully reconstructed!")
-
-                    res_col1, res_col2, res_col3 = st.columns(3)
-                    with res_col1:
-                        st.metric("TP", cm.true_positive)
-                        st.metric("FN", cm.false_negative)
-                    with res_col2:
-                        st.metric("FP", cm.false_positive)
-                        st.metric("TN", cm.true_negative)
-                    with res_col3:
-                        st.metric("Total", cm.total)
-                        st.metric("Accuracy", f"{cm.get_accuracy():.3f}")
-
-                    st.markdown("#### All Computed Metrics")
-                    metrics = cm.get_all_metrics()
-                    metrics_df = pd.DataFrame([{"Metric": k.replace('_', ' ').title(), "Value": f"{v:.4f}"} for k, v in metrics.items()])
-                    st.dataframe(metrics_df, width='stretch', hide_index=True)
-
-                    add_name = st.text_input("Add to comparison as:", value="Reconstructed", key="add_recon_name")
-                    if st.button("➕ Add to Model Comparison", key="add_recon_btn"):
-                        st.session_state.matrices[add_name] = cm
-                        st.success(f"✅ Added '{add_name}'! Switch to Model Comparison tab to view.")
-                        st.rerun()
 
                 except ValueError as e:
                     st.error(f"❌ {str(e)}")
+
+            # Display results if we have a reconstructed matrix
+            if 'reconstructed_cm' in st.session_state:
+                cm = st.session_state.reconstructed_cm
+
+                res_col1, res_col2, res_col3 = st.columns(3)
+                with res_col1:
+                    st.metric("TP", cm.true_positive)
+                    st.metric("FN", cm.false_negative)
+                with res_col2:
+                    st.metric("FP", cm.false_positive)
+                    st.metric("TN", cm.true_negative)
+                with res_col3:
+                    st.metric("Total", cm.total)
+                    st.metric("Accuracy", f"{cm.get_accuracy():.3f}")
+
+                st.markdown("#### All Computed Metrics")
+                metrics = cm.get_all_metrics()
+                metrics_df = pd.DataFrame([{"Metric": k.replace('_', ' ').title(), "Value": f"{v:.4f}"} for k, v in metrics.items()])
+                st.dataframe(metrics_df, width='stretch', hide_index=True)
+
+                # Generate default name using model counter
+                default_add_name = f"Model {st.session_state.get('model_counter', len(st.session_state.get('matrices', {})) + 1)}"
+                add_name = st.text_input("Add to comparison as:", value=default_add_name, key="add_recon_name")
+                if st.button("➕ Add to Model Comparison", key="add_recon_btn"):
+                    # Use the add_matrix function which handles counter increment
+                    add_matrix(add_name, cm)
+                    # Clear the reconstructed matrix after adding
+                    del st.session_state.reconstructed_cm
+                    st.success(f"✅ Added '{add_name}' to Model Comparison!")
+                    st.balloons()
+                    st.rerun()
 
         with col2:
             st.info("""
@@ -178,28 +191,36 @@ def render_metric_completion_tab():
                             random_state=42
                         )
 
+                    # Store in session state
+                    st.session_state.inferred_result = result
+                    st.session_state.infer_total_samples = infer_total
                     st.success(f"✅ Generated {result['n_valid_samples']:,}/{n_sims:,} valid matrices")
-
-                    st.markdown("#### Provided Metrics")
-                    prov_df = pd.DataFrame([{"Metric": k.title(), "Value": f"{v:.3f}"} for k, v in result['provided_metrics'].items()])
-                    st.dataframe(prov_df, width='stretch', hide_index=True)
-
-                    st.markdown(f"#### Inferred Metrics ({conf_level*100:.0f}% CI)")
-                    inferred_data = []
-                    for name, stats in result['inferred_metrics'].items():
-                        inferred_data.append({
-                            "Metric": name.replace('_', ' ').title(),
-                            "Mean": f"{stats['mean']:.3f}",
-                            f"{conf_level*100:.0f}% CI": f"[{stats['ci_lower']:.3f}, {stats['ci_upper']:.3f}]",
-                            "Std": f"{stats['std']:.3f}"
-                        })
-                    inferred_df = pd.DataFrame(inferred_data)
-                    st.dataframe(inferred_df, width='stretch', hide_index=True)
-
-                    st.info("Wide confidence intervals = high uncertainty from limited info")
 
                 except ValueError as e:
                     st.error(f"❌ {str(e)}")
+
+            # Display results if we have inferred metrics
+            if 'inferred_result' in st.session_state:
+                result = st.session_state.inferred_result
+                conf_level = result.get('confidence_level', 0.95)
+
+                st.markdown("#### Provided Metrics")
+                prov_df = pd.DataFrame([{"Metric": k.title(), "Value": f"{v:.3f}"} for k, v in result['provided_metrics'].items()])
+                st.dataframe(prov_df, width='stretch', hide_index=True)
+
+                st.markdown(f"#### Inferred Metrics ({conf_level*100:.0f}% CI)")
+                inferred_data = []
+                for name, stats in result['inferred_metrics'].items():
+                    inferred_data.append({
+                        "Metric": name.replace('_', ' ').title(),
+                        "Mean": f"{stats['mean']:.3f}",
+                        f"{conf_level*100:.0f}% CI": f"[{stats['ci_lower']:.3f}, {stats['ci_upper']:.3f}]",
+                        "Std": f"{stats['std']:.3f}"
+                    })
+                inferred_df = pd.DataFrame(inferred_data)
+                st.dataframe(inferred_df, width='stretch', hide_index=True)
+
+                st.info("💡 Wide confidence intervals = high uncertainty from limited info. These are estimates, not exact values.")
 
         with col2:
             st.info("""

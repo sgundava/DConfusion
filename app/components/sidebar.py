@@ -37,11 +37,12 @@ def render_sidebar():
         ["Binary (TP/FN/FP/TN)", "Multi-class Matrix", "From Predictions"]
     )
 
-    matrices = get_matrices()
+    # Use model counter for auto-increment
+    default_name = f"Model {st.session_state.model_counter}"
     matrix_name = st.sidebar.text_input(
         "Matrix Name",
-        value=f"Model {len(matrices) + 1}",
-        key="matrix_name_input"
+        value=default_name,
+        key=f"matrix_name_input_{st.session_state.model_counter}"
     )
 
     if input_method == "Binary (TP/FN/FP/TN)":
