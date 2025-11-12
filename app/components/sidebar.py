@@ -75,6 +75,7 @@ def _render_binary_input(matrix_name):
         try:
             cm = DConfusion(tp, fn, fp, tn)
             add_matrix_with_feedback(matrix_name, cm)
+            st.rerun()
         except Exception as e:
             st.sidebar.error(f"❌ Error: {str(e)}")
 
@@ -109,6 +110,7 @@ def _render_multiclass_input(matrix_name):
         try:
             cm = DConfusion(confusion_matrix=matrix_values, labels=labels)
             add_matrix_with_feedback(matrix_name, cm)
+            st.rerun()
         except Exception as e:
             st.sidebar.error(f"❌ Error: {str(e)}")
 
@@ -125,5 +127,6 @@ def _render_predictions_input(matrix_name):
             y_pred = [int(x.strip()) for x in y_pred_input.split(",")]
             cm = DConfusion.from_predictions(y_true, y_pred)
             add_matrix_with_feedback(matrix_name, cm)
+            st.rerun()
         except Exception as e:
             st.sidebar.error(f"❌ Error: {str(e)}")
