@@ -659,3 +659,4 @@ dconfusion is released under the MIT License. See LICENSE for details.
 - v1.0.0: Broke the file into multiple modules for better modularity. Added support for warnings.
 - v1.0.1: Updated documentation. Added new statistical tests.
 - v1.0.2: Added metric completion features - `from_metrics()` for exact reconstruction and `infer_metrics()` for probabilistic inference with confidence intervals.
+- v1.0.3: Bug fixes
