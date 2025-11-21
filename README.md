@@ -529,7 +529,8 @@ cm = DConfusion.from_metrics(
 # Now you can compute unreported metrics
 print(f"Specificity: {cm.get_specificity():.3f}")
 print(f"F1 Score: {cm.get_f1_score():.3f}")
-print(f"MCC: {cm.get_mcc():.3f}")
+print(f"MCC: {cm.get_mcc():.3f}")  # Clean alias for Matthews Correlation Coefficient
+print(f"NPV: {cm.get_npv():.3f}")  # Negative Predictive Value
 
 # Verify their reported metrics
 result = cm.check_metric_consistency({

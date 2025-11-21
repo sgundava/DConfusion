@@ -137,39 +137,45 @@ def render_cost_analysis_tab(matrices):
             selected_model = st.selectbox("Select Model", list(binary_models.keys()), key="metric_rec_model")
             cm_selected = binary_models[selected_model]
 
+            # Initialize session state for cost ratios if not exists
+            if "fp_ratio" not in st.session_state:
+                st.session_state.fp_ratio = 1.0
+            if "fn_ratio" not in st.session_state:
+                st.session_state.fn_ratio = 10.0
+
+            # Quick presets (placed before inputs so they can update the values)
+            st.markdown("**Quick Presets:**")
+            preset_col1, preset_col2, preset_col3 = st.columns(3)
+            with preset_col1:
+                if st.button("🏥 Medical Diagnosis (FN >> FP)", help="Missing a disease is much worse than false alarm"):
+                    st.session_state.fp_ratio = 1.0
+                    st.session_state.fn_ratio = 10.0
+                    st.rerun()
+            with preset_col2:
+                if st.button("📧 Spam Detection (FP >> FN)", help="Blocking legitimate email is much worse than letting spam through"):
+                    st.session_state.fp_ratio = 10.0
+                    st.session_state.fn_ratio = 1.0
+                    st.rerun()
+            with preset_col3:
+                if st.button("⚖️ Balanced Costs", help="Both error types are equally costly"):
+                    st.session_state.fp_ratio = 1.0
+                    st.session_state.fn_ratio = 1.0
+                    st.rerun()
+
             # Cost ratio inputs
             st.markdown("### Define Cost Ratio")
             col1, col2 = st.columns(2)
 
             with col1:
-                cost_fp_ratio = st.number_input("Cost of False Positive", value=1.0, min_value=0.01, step=0.1,
-                                               key="fp_ratio")
+                cost_fp_ratio = st.number_input("Cost of False Positive", value=st.session_state.fp_ratio,
+                                               min_value=0.01, step=0.1, key="fp_ratio")
             with col2:
-                cost_fn_ratio = st.number_input("Cost of False Negative", value=10.0, min_value=0.01, step=0.1,
-                                               key="fn_ratio")
+                cost_fn_ratio = st.number_input("Cost of False Negative", value=st.session_state.fn_ratio,
+                                               min_value=0.01, step=0.1, key="fn_ratio")
 
             cost_ratio = cost_fn_ratio / cost_fp_ratio if cost_fp_ratio > 0 else 1.0
             st.info(f"📊 Cost Ratio (FN/FP): **{cost_ratio:.2f}** - "
                    f"False negatives are {cost_ratio:.1f}x {'more' if cost_ratio > 1 else 'less'} costly than false positives")
-
-            # Quick presets
-            st.markdown("**Quick Presets:**")
-            preset_col1, preset_col2, preset_col3 = st.columns(3)
-            with preset_col1:
-                if st.button("🏥 Medical Diagnosis (FN >> FP)", width='content'):
-                    cost_fp_ratio = 1.0
-                    cost_fn_ratio = 10.0
-                    st.rerun()
-            with preset_col2:
-                if st.button("📧 Spam Detection (FP >> FN)", width='content'):
-                    cost_fp_ratio = 100.0
-                    cost_fn_ratio = 1.0
-                    st.rerun()
-            with preset_col3:
-                if st.button("⚖️ Balanced Costs", width='content'):
-                    cost_fp_ratio = 1.0
-                    cost_fn_ratio = 1.0
-                    st.rerun()
 
             if st.button("Get Recommendation", type="primary"):
                 try:

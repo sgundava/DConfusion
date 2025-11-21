@@ -877,3 +877,99 @@ class MetricsMixin:
                 'cost_ratio_fn_to_fp': cost_fn / cost_fp if cost_fp != 0 else float('inf')
             }
         }
+
+    # =========================================================================
+    # Method Aliases - Common Abbreviations
+    # =========================================================================
+
+    def get_mcc(self) -> float:
+        """
+        Alias for get_matthews_correlation_coefficient().
+
+        Matthews Correlation Coefficient (MCC) is a balanced metric for binary
+        classification that takes into account all four values in the confusion matrix.
+
+        Returns:
+            float: MCC value between -1 and 1
+        """
+        return self.get_matthews_correlation_coefficient()
+
+    def get_npv(self) -> float:
+        """
+        Calculate Negative Predictive Value (NPV).
+
+        NPV = TN / (TN + FN)
+
+        Represents the probability that a negative prediction is correct.
+        Complement of False Discovery Rate for negative predictions.
+
+        Returns:
+            float: NPV value between 0 and 1
+
+        Raises:
+            ValueError: If not binary classification
+            ZeroDivisionError: If no actual negatives (TN + FN = 0)
+        """
+        if self.n_classes != 2:
+            raise ValueError("NPV is only available for binary classification")
+
+        from .validation import validate_non_zero_denominator
+        denominator = self.true_negative + self.false_negative
+        validate_non_zero_denominator(denominator, "Negative Predictive Value (NPV)")
+
+        return self.true_negative / denominator
+
+    def get_tpr(self) -> float:
+        """
+        Alias for get_recall() - True Positive Rate / Sensitivity.
+
+        TPR = TP / (TP + FN)
+
+        Returns:
+            float: True Positive Rate
+        """
+        return self.get_recall()
+
+    def get_tnr(self) -> float:
+        """
+        Alias for get_specificity() - True Negative Rate.
+
+        TNR = TN / (TN + FP)
+
+        Returns:
+            float: True Negative Rate
+        """
+        return self.get_specificity()
+
+    def get_fpr(self) -> float:
+        """
+        Alias for get_false_positive_rate().
+
+        FPR = FP / (FP + TN) = 1 - Specificity
+
+        Returns:
+            float: False Positive Rate
+        """
+        return self.get_false_positive_rate()
+
+    def get_fnr(self) -> float:
+        """
+        Alias for get_false_negative_rate().
+
+        FNR = FN / (FN + TP) = 1 - Recall
+
+        Returns:
+            float: False Negative Rate
+        """
+        return self.get_false_negative_rate()
+
+    def get_ppv(self) -> float:
+        """
+        Alias for get_precision() - Positive Predictive Value.
+
+        PPV = TP / (TP + FP)
+
+        Returns:
+            float: Positive Predictive Value
+        """
+        return self.get_precision()

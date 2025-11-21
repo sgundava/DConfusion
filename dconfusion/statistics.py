@@ -519,33 +519,60 @@ class MetricInferenceMixin:
                 return (tp, fn, fp, tn)
 
         # Approach 3: Precision, Recall, Accuracy
+        # Use comprehensive grid search for best integer solution
         if precision is not None and recall is not None and accuracy is not None:
-            # This is more complex - we need to search
-            # Acc = (TP + TN) / N
-            # P = TP / (TP + FP)
-            # R = TP / (TP + FN)
+            best_solution = None
+            best_error = float('inf')
 
-            # Try different values of TP
+            # Search through all possible TP values
             for tp in range(N + 1):
+                # For each TP, find FN that gives us the target recall
                 if recall > 0:
-                    actual_positives = round(tp / recall)
-                    fn = actual_positives - tp
-                else:
-                    continue
+                    # From recall = TP / (TP + FN), we get: FN = TP/recall - TP
+                    fn_exact = tp / recall - tp
+                    # Try both floor and ceil to find best integer match
+                    for fn in [int(fn_exact), int(fn_exact) + 1]:
+                        if fn < 0:
+                            continue
 
-                if precision > 0:
-                    predicted_positives = round(tp / precision)
-                    fp = predicted_positives - tp
-                else:
-                    fp = 0
+                        # For precision: FP = TP/precision - TP
+                        if precision > 0:
+                            fp_exact = tp / precision - tp
+                            # Try both floor and ceil
+                            for fp in [int(fp_exact), int(fp_exact) + 1]:
+                                if fp < 0:
+                                    continue
 
-                tn = N - tp - fn - fp
+                                tn = N - tp - fn - fp
 
-                if all(x >= 0 for x in [tp, fn, fp, tn]) and tp + fn + fp + tn == N:
-                    # Check accuracy
-                    calc_acc = (tp + tn) / N
-                    if abs(calc_acc - accuracy) < 0.01:  # Allow small tolerance
-                        return (tp, fn, fp, tn)
+                                # Check validity
+                                if tn < 0 or tp + fn + fp + tn != N:
+                                    continue
+
+                                # Calculate actual metrics
+                                calc_acc = (tp + tn) / N
+                                calc_prec = tp / (tp + fp) if (tp + fp) > 0 else 0
+                                calc_rec = tp / (tp + fn) if (tp + fn) > 0 else 0
+
+                                # Calculate total error (weighted sum of squared errors)
+                                error = (
+                                    (calc_acc - accuracy) ** 2 +
+                                    (calc_prec - precision) ** 2 +
+                                    (calc_rec - recall) ** 2
+                                )
+
+                                # Keep track of best solution
+                                if error < best_error:
+                                    best_error = error
+                                    best_solution = (tp, fn, fp, tn)
+
+                                    # Only stop early if we found a perfect match
+                                    if error == 0:  # Exact match
+                                        return best_solution
+
+            # Return best solution found
+            if best_solution is not None:
+                return best_solution
 
         # Approach 4: Recall, Specificity, Prevalence
         if recall is not None and specificity is not None and prevalence is not None:
@@ -587,6 +614,9 @@ class MetricInferenceMixin:
     ) -> Optional[Tuple[int, int, int, int]]:
         """
         Use numerical optimization to find confusion matrix values.
+
+        Uses improved optimization with better initial guesses and
+        multiple optimization methods for robustness.
         """
         def objective(x):
             """Minimize sum of squared errors for all constraints."""
@@ -596,7 +626,8 @@ class MetricInferenceMixin:
             if any(val < 0 for val in x):
                 return 1e10
 
-            total_error = (tp + fn + fp + tn - N) ** 2
+            # Strong penalty for not summing to N
+            total_error = (tp + fn + fp + tn - N) ** 2 * 1000
 
             errors = []
 
@@ -604,17 +635,26 @@ class MetricInferenceMixin:
                 calc_acc = (tp + tn) / N if N > 0 else 0
                 errors.append((calc_acc - accuracy) ** 2)
 
-            if precision is not None and (tp + fp) > 0:
-                calc_prec = tp / (tp + fp)
-                errors.append((calc_prec - precision) ** 2)
+            if precision is not None:
+                if (tp + fp) > 0:
+                    calc_prec = tp / (tp + fp)
+                    errors.append((calc_prec - precision) ** 2)
+                elif precision == 0:
+                    # Precision should be 0, ensure TP = 0
+                    errors.append(tp ** 2)
 
-            if recall is not None and (tp + fn) > 0:
-                calc_rec = tp / (tp + fn)
-                errors.append((calc_rec - recall) ** 2)
+            if recall is not None:
+                if (tp + fn) > 0:
+                    calc_rec = tp / (tp + fn)
+                    errors.append((calc_rec - recall) ** 2)
+                elif recall == 0:
+                    # Recall should be 0, ensure TP = 0
+                    errors.append(tp ** 2)
 
-            if specificity is not None and (tn + fp) > 0:
-                calc_spec = tn / (tn + fp)
-                errors.append((calc_spec - specificity) ** 2)
+            if specificity is not None:
+                if (tn + fp) > 0:
+                    calc_spec = tn / (tn + fp)
+                    errors.append((calc_spec - specificity) ** 2)
 
             if prevalence is not None:
                 calc_prev = (tp + fn) / N if N > 0 else 0
@@ -629,8 +669,17 @@ class MetricInferenceMixin:
 
             return total_error + sum(errors) * 100
 
-        # Initial guess: distribute samples based on accuracy
-        if accuracy is not None:
+        # Better initial guess using known constraints
+        if recall is not None and precision is not None and accuracy is not None:
+            # Smart initial guess for precision+recall+accuracy case
+            # Start with approximation from greedy method
+            tp_guess = int(N * accuracy * recall)  # Rough estimate
+            fn_guess = int(tp_guess / recall) - tp_guess if recall > 0 else 0
+            fp_guess = int(tp_guess / precision) - tp_guess if precision > 0 else 0
+            tn_guess = N - tp_guess - fn_guess - fp_guess
+            tn_guess = max(0, tn_guess)  # Ensure non-negative
+            x0 = [tp_guess, fn_guess, fp_guess, tn_guess]
+        elif accuracy is not None:
             correct = int(accuracy * N)
             incorrect = N - correct
             x0 = [correct // 2, incorrect // 2, incorrect // 2, correct // 2]
@@ -640,30 +689,76 @@ class MetricInferenceMixin:
         # Bounds: all values between 0 and N
         bounds = [(0, N)] * 4
 
-        # Optimize
+        # Try multiple optimization methods for robustness
+        best_result = None
+        best_error = float('inf')
+
+        # Method 1: L-BFGS-B (fast, gradient-based)
         result = minimize(objective, x0, method='L-BFGS-B', bounds=bounds)
 
-        if result.success and result.fun < 1.0:  # Small error tolerance
-            tp, fn, fp, tn = [round(x) for x in result.x]
+        if result.success and result.fun < best_error:
+            best_result = result
+            best_error = result.fun
+
+        # Method 2: SLSQP (Sequential Least Squares)
+        try:
+            result2 = minimize(objective, x0, method='SLSQP', bounds=bounds)
+            if result2.success and result2.fun < best_error:
+                best_result = result2
+                best_error = result2.fun
+        except:
+            pass  # SLSQP might fail for some constraints
+
+        # Use best result found
+        if best_result is not None and best_error < 1.0:
+            tp, fn, fp, tn = [round(x) for x in best_result.x]
 
             # Adjust to ensure exact sum to N
             total = tp + fn + fp + tn
             if total != N:
-                # Adjust the largest value
-                vals = [(tp, 0), (fn, 1), (fp, 2), (tn, 3)]
-                vals.sort(reverse=True)
                 diff = total - N
-                if vals[0][0] >= diff:
-                    idx = vals[0][1]
-                    if idx == 0:
-                        tp -= diff
-                    elif idx == 1:
-                        fn -= diff
-                    elif idx == 2:
-                        fp -= diff
-                    else:
-                        tn -= diff
+                # Try to distribute the difference intelligently
+                # Adjust the value that has the most "room" to change
+                vals = [
+                    (tp, 0, best_result.x[0] - tp),  # (value, index, fractional_part)
+                    (fn, 1, best_result.x[1] - fn),
+                    (fp, 2, best_result.x[2] - fp),
+                    (tn, 3, best_result.x[3] - tn)
+                ]
 
+                if diff > 0:
+                    # Need to subtract - pick value with largest fractional part
+                    vals.sort(key=lambda v: v[2], reverse=True)
+                else:
+                    # Need to add - pick value with most negative fractional part
+                    vals.sort(key=lambda v: v[2])
+
+                # Apply correction to the best candidate
+                idx = vals[0][1]
+                if idx == 0 and tp >= diff:
+                    tp -= diff
+                elif idx == 1 and fn >= diff:
+                    fn -= diff
+                elif idx == 2 and fp >= diff:
+                    fp -= diff
+                elif idx == 3 and tn >= diff:
+                    tn -= diff
+                else:
+                    # Fallback: adjust largest value
+                    vals_by_size = [(tp, 0), (fn, 1), (fp, 2), (tn, 3)]
+                    vals_by_size.sort(reverse=True)
+                    if vals_by_size[0][0] >= diff:
+                        idx = vals_by_size[0][1]
+                        if idx == 0:
+                            tp -= diff
+                        elif idx == 1:
+                            fn -= diff
+                        elif idx == 2:
+                            fp -= diff
+                        else:
+                            tn -= diff
+
+            # Ensure all values are valid
             if all(x >= 0 for x in [tp, fn, fp, tn]) and tp + fn + fp + tn == N:
                 return (tp, fn, fp, tn)
 
