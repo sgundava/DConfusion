@@ -25,7 +25,7 @@ A Python package for working with confusion matrices - now with a web UI!
 * **⚠️ Warning System** - Research-based warnings for common pitfalls (sample size, class imbalance, metric reliability)
 * **📊 Statistical Testing** - Bootstrap confidence intervals, McNemar's test, metric consistency checks
 * **💰 Cost-Sensitive Analysis** - Calculate misclassification costs, find optimal metrics for your use case, compare models by business impact
-* **🔍 NEW: Metric Completion** - Reconstruct confusion matrices from partial metrics, infer missing metrics with confidence intervals
+* **🔍 Metric Completion** - Reconstruct confusion matrices from 13 different metrics (including NPV, FPR, FNR, error rates), infer missing metrics with confidence intervals
 * **Modular Design** - Clean separation: core, metrics, visualization, I/O, statistics
 
 ## Installation
@@ -450,17 +450,25 @@ TP=30, FN=10
 FP=8, TN=52
 ```
 
-**Supported metric combinations:**
+**Supported metrics (13 total):**
+- **Primary**: Accuracy, Precision (PPV), Recall (TPR/Sensitivity), Specificity (TNR)
+- **Predictive Values**: NPV (Negative Predictive Value)
+- **Error Rates**: FPR (False Positive Rate/Type I Error), FNR (False Negative Rate/Type II Error), Error Rate
+- **Composite**: F1 Score, Prevalence
+
+**Example metric combinations:**
 - Precision + Recall + Prevalence
 - Accuracy + Recall + Prevalence
-- Precision + Recall + Accuracy
-- Recall + Specificity + Prevalence
+- NPV + Specificity + Prevalence
+- FPR + FNR + Prevalence
+- Error Rate + Precision + Recall
 - Any 3+ independent metrics
 
 **Requirements:**
 - At least 3 independent metrics (plus `total_samples`)
 - Metrics must be mathematically consistent
 - Returns exact solution or raises error if impossible
+- Supports metric aliases (TPR=Recall, TNR=Specificity, PPV=Precision)
 
 #### 2. `infer_metrics()` - Probabilistic Inference
 
@@ -563,7 +571,46 @@ precision = result['inferred_metrics']['precision']
 print(f"Estimated PPV: {precision['mean']:.3f} [{precision['ci_lower']:.3f}-{precision['ci_upper']:.3f}]")
 ```
 
-#### Example 3: Multiple Valid Solutions
+#### Example 3: Using Type I/II Errors (Medical/Statistical Format)
+
+Research papers in statistics or quality control often report error rates instead of accuracy:
+
+```python
+# Paper reports: "Type I error = 15%, Type II error = 10%, prevalence = 30%"
+cm = DConfusion.from_metrics(
+    total_samples=200,
+    fpr=0.15,  # False Positive Rate (Type I Error)
+    fnr=0.10,  # False Negative Rate (Type II Error)
+    prevalence=0.30
+)
+
+# Convert to ML metrics
+print(f"Accuracy: {cm.get_accuracy():.3f}")
+print(f"Precision: {cm.get_precision():.3f}")
+print(f"Recall (1-FNR): {cm.get_recall():.3f}")
+print(f"Specificity (1-FPR): {cm.get_specificity():.3f}")
+```
+
+#### Example 4: Using NPV for Medical Tests
+
+Medical diagnostics often report NPV (Negative Predictive Value):
+
+```python
+# Medical test report: "NPV=92%, Specificity=88%, Prevalence=40%"
+cm = DConfusion.from_metrics(
+    total_samples=150,
+    npv=0.92,
+    specificity=0.88,
+    prevalence=0.40
+)
+
+# Get the full picture
+print(f"PPV (Precision): {cm.get_precision():.3f}")
+print(f"Sensitivity (Recall): {cm.get_recall():.3f}")
+print(f"Accuracy: {cm.get_accuracy():.3f}")
+```
+
+#### Example 5: Multiple Valid Solutions
 
 Sometimes partial metrics allow multiple valid confusion matrices:
 

@@ -362,6 +362,13 @@ class MetricInferenceMixin:
         specificity: Optional[float] = None,
         f1_score: Optional[float] = None,
         prevalence: Optional[float] = None,
+        npv: Optional[float] = None,
+        fpr: Optional[float] = None,
+        fnr: Optional[float] = None,
+        tpr: Optional[float] = None,
+        tnr: Optional[float] = None,
+        error_rate: Optional[float] = None,
+        ppv: Optional[float] = None,
         **kwargs
     ):
         """
@@ -376,11 +383,18 @@ class MetricInferenceMixin:
         Args:
             total_samples: Total number of samples (required)
             accuracy: Overall accuracy (0-1)
-            precision: Positive predictive value (0-1)
-            recall: True positive rate / sensitivity (0-1)
-            specificity: True negative rate (0-1)
+            precision: Positive predictive value / PPV (0-1)
+            recall: True positive rate / sensitivity / TPR (0-1)
+            specificity: True negative rate / TNR (0-1)
             f1_score: F1 score (0-1)
             prevalence: Proportion of positive class (0-1)
+            npv: Negative predictive value (0-1)
+            fpr: False positive rate / Type I error (0-1)
+            fnr: False negative rate / Type II error (0-1)
+            tpr: True positive rate (alias for recall) (0-1)
+            tnr: True negative rate (alias for specificity) (0-1)
+            error_rate: Overall error rate / misclassification rate (0-1)
+            ppv: Positive predictive value (alias for precision) (0-1)
 
         Returns:
             DConfusion object that satisfies the constraints
@@ -399,22 +413,82 @@ class MetricInferenceMixin:
             ... )
             >>> print(cm)
 
+            >>> # Or using Type I/II errors
+            >>> cm = DConfusion.from_metrics(
+            ...     total_samples=200,
+            ...     fpr=0.15,
+            ...     fnr=0.10,
+            ...     prevalence=0.30
+            ... )
+            >>> print(cm)
+
         Note:
             - At least 3 independent metrics are typically needed (plus total_samples)
             - Some metric combinations may have multiple solutions
             - The method returns one valid solution if multiple exist
+            - Derived metrics (FPR=1-specificity, FNR=1-recall, etc.) are automatically converted
         """
         if total_samples <= 0:
             raise ValueError("total_samples must be positive")
 
-        # Count provided metrics
+        # Handle aliases and derived metrics
+        # TPR is an alias for recall
+        if tpr is not None and recall is None:
+            recall = tpr
+        elif tpr is not None and recall is not None and abs(tpr - recall) > 1e-6:
+            raise ValueError(f"tpr ({tpr}) and recall ({recall}) are aliases but have different values")
+
+        # TNR is an alias for specificity
+        if tnr is not None and specificity is None:
+            specificity = tnr
+        elif tnr is not None and specificity is not None and abs(tnr - specificity) > 1e-6:
+            raise ValueError(f"tnr ({tnr}) and specificity ({specificity}) are aliases but have different values")
+
+        # PPV is an alias for precision
+        if ppv is not None and precision is None:
+            precision = ppv
+        elif ppv is not None and precision is not None and abs(ppv - precision) > 1e-6:
+            raise ValueError(f"ppv ({ppv}) and precision ({precision}) are aliases but have different values")
+
+        # FPR = 1 - specificity
+        if fpr is not None:
+            if specificity is None:
+                specificity = 1 - fpr
+            else:
+                # Validate consistency
+                expected_fpr = 1 - specificity
+                if abs(fpr - expected_fpr) > 1e-6:
+                    raise ValueError(f"fpr ({fpr}) and specificity ({specificity}) are inconsistent. FPR should be {expected_fpr:.4f}")
+
+        # FNR = 1 - recall
+        if fnr is not None:
+            if recall is None:
+                recall = 1 - fnr
+            else:
+                # Validate consistency
+                expected_fnr = 1 - recall
+                if abs(fnr - expected_fnr) > 1e-6:
+                    raise ValueError(f"fnr ({fnr}) and recall ({recall}) are inconsistent. FNR should be {expected_fnr:.4f}")
+
+        # Error rate = 1 - accuracy
+        if error_rate is not None:
+            if accuracy is None:
+                accuracy = 1 - error_rate
+            else:
+                # Validate consistency
+                expected_error = 1 - accuracy
+                if abs(error_rate - expected_error) > 1e-6:
+                    raise ValueError(f"error_rate ({error_rate}) and accuracy ({accuracy}) are inconsistent. Error rate should be {expected_error:.4f}")
+
+        # Count provided metrics (after conversions)
         provided_metrics = {
             'accuracy': accuracy,
             'precision': precision,
             'recall': recall,
             'specificity': specificity,
             'f1_score': f1_score,
-            'prevalence': prevalence
+            'prevalence': prevalence,
+            'npv': npv
         }
 
         # Filter out None values
@@ -434,7 +508,7 @@ class MetricInferenceMixin:
         # Try to solve the system of equations
         result = cls._solve_confusion_matrix(
             total_samples, accuracy, precision, recall,
-            specificity, f1_score, prevalence
+            specificity, f1_score, prevalence, npv
         )
 
         if result is None:
@@ -469,7 +543,8 @@ class MetricInferenceMixin:
         recall: Optional[float],
         specificity: Optional[float],
         f1_score: Optional[float],
-        prevalence: Optional[float]
+        prevalence: Optional[float],
+        npv: Optional[float] = None
     ) -> Optional[Tuple[int, int, int, int]]:
         """
         Solve for TP, FN, FP, TN given constraints.
@@ -479,7 +554,7 @@ class MetricInferenceMixin:
         """
         # Strategy: Try different approaches based on which metrics are provided
 
-        # Approach 1: Precision, Recall, Total (most common case)
+        # Approach 1: Precision, Recall, Prevalence (most common case)
         if precision is not None and recall is not None and prevalence is not None:
             # P = TP / (TP + FP) => TP = P * (TP + FP)
             # R = TP / (TP + FN) => TP = R * (TP + FN)
@@ -592,10 +667,101 @@ class MetricInferenceMixin:
             if all(x >= 0 for x in [tp, fn, fp, tn]) and tp + fn + fp + tn == N:
                 return (tp, fn, fp, tn)
 
-        # Approach 5: Use optimization for complex cases
-        if len([x for x in [accuracy, precision, recall, specificity, f1_score, prevalence] if x is not None]) >= 3:
+        # Approach 5: NPV, Specificity, Prevalence
+        if npv is not None and specificity is not None and prevalence is not None:
+            # NPV = TN / (TN + FN)
+            # Spec = TN / (TN + FP)
+            # Prev = (TP + FN) / N
+
+            actual_positives = round(prevalence * N)
+            actual_negatives = N - actual_positives
+
+            # From specificity: TN = Spec * (TN + FP) = Spec * actual_negatives
+            tn = round(specificity * actual_negatives)
+            fp = actual_negatives - tn
+
+            # From NPV: TN = NPV * (TN + FN)
+            # We know: FN = actual_positives - TP
+            # So: TN = NPV * (TN + actual_positives - TP)
+            # Rearranging: TN(1 - NPV) = NPV * (actual_positives - TP)
+            # We already have TN from specificity, so solve for FN:
+            # FN = TN/NPV - TN = TN(1/NPV - 1)
+            if npv > 0:
+                predicted_negatives = round(tn / npv)
+                fn = predicted_negatives - tn
+            else:
+                fn = 0
+
+            tp = actual_positives - fn
+
+            if all(x >= 0 for x in [tp, fn, fp, tn]) and tp + fn + fp + tn == N:
+                return (tp, fn, fp, tn)
+
+        # Approach 6: Precision (PPV), NPV, Prevalence
+        if precision is not None and npv is not None and prevalence is not None:
+            # PPV (precision) = TP / (TP + FP)
+            # NPV = TN / (TN + FN)
+            # Prev = (TP + FN) / N
+
+            actual_positives = round(prevalence * N)
+            actual_negatives = N - actual_positives
+
+            # From Bayes theorem and prevalence:
+            # We need to solve a system. Let's use an iterative approach.
+            # Starting guess: split positives and negatives proportionally
+            for tp in range(actual_positives + 1):
+                fn = actual_positives - tp
+
+                # From precision: FP = TP/precision - TP = TP(1/precision - 1)
+                if precision > 0:
+                    predicted_positives = round(tp / precision)
+                    fp = predicted_positives - tp
+                else:
+                    fp = 0
+
+                tn = N - tp - fn - fp
+
+                # Check if NPV constraint is satisfied
+                if tn >= 0 and fp >= 0:
+                    if (tn + fn) > 0:
+                        calc_npv = tn / (tn + fn)
+                        # Check if close enough (within 5% tolerance for integer rounding)
+                        if abs(calc_npv - npv) < 0.05:
+                            if tp + fn + fp + tn == N:
+                                return (tp, fn, fp, tn)
+
+        # Approach 7: Recall, NPV, Prevalence
+        if recall is not None and npv is not None and prevalence is not None:
+            # Recall = TP / (TP + FN)
+            # NPV = TN / (TN + FN)
+            # Prev = (TP + FN) / N
+
+            actual_positives = round(prevalence * N)
+            actual_negatives = N - actual_positives
+
+            # From recall: TP = recall * actual_positives
+            tp = round(recall * actual_positives)
+            fn = actual_positives - tp
+
+            # From NPV: TN = NPV * (TN + FN)
+            # TN = NPV * (TN + FN)
+            # TN(1 - NPV) = NPV * FN
+            # TN = NPV * FN / (1 - NPV)
+            if npv < 1:
+                tn = round(npv * fn / (1 - npv))
+            else:
+                # NPV = 1 means FN = 0 (which we already have from recall)
+                tn = actual_negatives
+
+            fp = N - tp - fn - tn
+
+            if all(x >= 0 for x in [tp, fn, fp, tn]) and tp + fn + fp + tn == N:
+                return (tp, fn, fp, tn)
+
+        # Approach 8: Use optimization for complex cases
+        if len([x for x in [accuracy, precision, recall, specificity, f1_score, prevalence, npv] if x is not None]) >= 3:
             result = MetricInferenceMixin._optimize_confusion_matrix(
-                N, accuracy, precision, recall, specificity, f1_score, prevalence
+                N, accuracy, precision, recall, specificity, f1_score, prevalence, npv
             )
             if result is not None:
                 return result
@@ -610,7 +776,8 @@ class MetricInferenceMixin:
         recall: Optional[float],
         specificity: Optional[float],
         f1_score: Optional[float],
-        prevalence: Optional[float]
+        prevalence: Optional[float],
+        npv: Optional[float] = None
     ) -> Optional[Tuple[int, int, int, int]]:
         """
         Use numerical optimization to find confusion matrix values.
@@ -659,6 +826,14 @@ class MetricInferenceMixin:
             if prevalence is not None:
                 calc_prev = (tp + fn) / N if N > 0 else 0
                 errors.append((calc_prev - prevalence) ** 2)
+
+            if npv is not None:
+                if (tn + fn) > 0:
+                    calc_npv = tn / (tn + fn)
+                    errors.append((calc_npv - npv) ** 2)
+                elif npv == 0:
+                    # NPV should be 0, ensure TN = 0
+                    errors.append(tn ** 2)
 
             if f1_score is not None and (tp + fp) > 0 and (tp + fn) > 0:
                 calc_prec = tp / (tp + fp)
@@ -773,6 +948,13 @@ class MetricInferenceMixin:
         recall: Optional[float] = None,
         specificity: Optional[float] = None,
         prevalence: Optional[float] = None,
+        npv: Optional[float] = None,
+        fpr: Optional[float] = None,
+        fnr: Optional[float] = None,
+        tpr: Optional[float] = None,
+        tnr: Optional[float] = None,
+        error_rate: Optional[float] = None,
+        ppv: Optional[float] = None,
         confidence_level: float = 0.95,
         n_simulations: int = 10000,
         random_state: Optional[int] = None
@@ -787,10 +969,17 @@ class MetricInferenceMixin:
         Args:
             total_samples: Total number of samples (required)
             accuracy: Overall accuracy (0-1), if known
-            precision: Positive predictive value (0-1), if known
-            recall: True positive rate (0-1), if known
-            specificity: True negative rate (0-1), if known
+            precision: Positive predictive value / PPV (0-1), if known
+            recall: True positive rate / sensitivity / TPR (0-1), if known
+            specificity: True negative rate / TNR (0-1), if known
             prevalence: Proportion of positive class (0-1), if known
+            npv: Negative predictive value (0-1), if known
+            fpr: False positive rate / Type I error (0-1), if known
+            fnr: False negative rate / Type II error (0-1), if known
+            tpr: True positive rate (alias for recall) (0-1), if known
+            tnr: True negative rate (alias for specificity) (0-1), if known
+            error_rate: Overall error rate (0-1), if known
+            ppv: Positive predictive value (alias for precision) (0-1), if known
             confidence_level: Confidence level for intervals (default: 0.95)
             n_simulations: Number of Monte Carlo simulations (default: 10000)
             random_state: Random seed for reproducibility
@@ -817,11 +1006,60 @@ class MetricInferenceMixin:
             >>> print(f"Precision: {result['inferred_metrics']['precision']['mean']:.3f}")
             >>> print(f"95% CI: [{result['inferred_metrics']['precision']['ci_lower']:.3f}, "
             ...       f"{result['inferred_metrics']['precision']['ci_upper']:.3f}]")
+
+            >>> # Or using Type I/II errors
+            >>> result = DConfusion.infer_metrics(
+            ...     total_samples=200,
+            ...     fpr=0.15,
+            ...     fnr=0.10,
+            ...     prevalence=0.30
+            ... )
+            >>> print(f"Accuracy: {result['inferred_metrics']['accuracy']['mean']:.3f}")
         """
         if total_samples <= 0:
             raise ValueError("total_samples must be positive")
 
-        # Collect provided metrics
+        # Handle aliases and derived metrics (same as from_metrics)
+        if tpr is not None and recall is None:
+            recall = tpr
+        elif tpr is not None and recall is not None and abs(tpr - recall) > 1e-6:
+            raise ValueError(f"tpr and recall are aliases but have different values")
+
+        if tnr is not None and specificity is None:
+            specificity = tnr
+        elif tnr is not None and specificity is not None and abs(tnr - specificity) > 1e-6:
+            raise ValueError(f"tnr and specificity are aliases but have different values")
+
+        if ppv is not None and precision is None:
+            precision = ppv
+        elif ppv is not None and precision is not None and abs(ppv - precision) > 1e-6:
+            raise ValueError(f"ppv and precision are aliases but have different values")
+
+        if fpr is not None:
+            if specificity is None:
+                specificity = 1 - fpr
+            else:
+                expected_fpr = 1 - specificity
+                if abs(fpr - expected_fpr) > 1e-6:
+                    raise ValueError(f"fpr and specificity are inconsistent")
+
+        if fnr is not None:
+            if recall is None:
+                recall = 1 - fnr
+            else:
+                expected_fnr = 1 - recall
+                if abs(fnr - expected_fnr) > 1e-6:
+                    raise ValueError(f"fnr and recall are inconsistent")
+
+        if error_rate is not None:
+            if accuracy is None:
+                accuracy = 1 - error_rate
+            else:
+                expected_error = 1 - accuracy
+                if abs(error_rate - expected_error) > 1e-6:
+                    raise ValueError(f"error_rate and accuracy are inconsistent")
+
+        # Collect provided metrics (after conversions)
         provided = {}
         if accuracy is not None:
             provided['accuracy'] = accuracy
@@ -833,6 +1071,8 @@ class MetricInferenceMixin:
             provided['specificity'] = specificity
         if prevalence is not None:
             provided['prevalence'] = prevalence
+        if npv is not None:
+            provided['npv'] = npv
 
         if len(provided) < 2:
             raise ValueError(
@@ -874,7 +1114,11 @@ class MetricInferenceMixin:
             'recall': [],
             'specificity': [],
             'f1_score': [],
-            'prevalence': []
+            'prevalence': [],
+            'npv': [],
+            'fpr': [],
+            'fnr': [],
+            'error_rate': []
         }
 
         for tp, fn, fp, tn in valid_matrices:
@@ -892,6 +1136,10 @@ class MetricInferenceMixin:
                 all_metrics['specificity'].append(cm.get_specificity())
                 all_metrics['f1_score'].append(cm.get_f1_score())
                 all_metrics['prevalence'].append((tp + fn) / total_samples)
+                all_metrics['npv'].append(cm.get_npv())
+                all_metrics['fpr'].append(cm.get_false_positive_rate())
+                all_metrics['fnr'].append(cm.get_false_negative_rate())
+                all_metrics['error_rate'].append(cm.get_error_rate())
             except (ValueError, ZeroDivisionError):
                 continue
 
@@ -982,6 +1230,12 @@ class MetricInferenceMixin:
             if 'precision' in constraints and (tp + fp) > 0:
                 calc_prec = tp / (tp + fp)
                 if abs(calc_prec - constraints['precision']) > 0.02:
+                    continue
+
+            # Check NPV constraint
+            if 'npv' in constraints and (tn + fn) > 0:
+                calc_npv = tn / (tn + fn)
+                if abs(calc_npv - constraints['npv']) > 0.02:
                     continue
 
             return (tp, fn, fp, tn)

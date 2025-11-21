@@ -41,29 +41,46 @@ def render_metric_completion_tab():
             total_samples = st.number_input("Total Samples", min_value=1, value=100, step=1, key="from_total")
 
             st.markdown("#### Select Metrics (need at least 3)")
-            met_col1, met_col2 = st.columns(2)
+            met_col1, met_col2, met_col3 = st.columns(3)
 
             with met_col1:
+                st.markdown("**Primary Metrics**")
                 use_acc = st.checkbox("Accuracy", key="from_acc_cb")
-                accuracy = st.slider("Value", 0.0, 1.0, 0.85, 0.01, key="from_acc_val", disabled=not use_acc) if use_acc else None
+                accuracy = st.slider("Value", 0.0, 1.0, 0.85, 0.01, key="from_acc_val", disabled=not use_acc, label_visibility="collapsed") if use_acc else None
 
-                use_prec = st.checkbox("Precision", key="from_prec_cb")
-                precision = st.slider("Value", 0.0, 1.0, 0.80, 0.01, key="from_prec_val", disabled=not use_prec) if use_prec else None
+                use_prec = st.checkbox("Precision (PPV)", key="from_prec_cb")
+                precision = st.slider("Value", 0.0, 1.0, 0.80, 0.01, key="from_prec_val", disabled=not use_prec, label_visibility="collapsed") if use_prec else None
 
-                use_rec = st.checkbox("Recall", key="from_rec_cb")
-                recall = st.slider("Value", 0.0, 1.0, 0.75, 0.01, key="from_rec_val", disabled=not use_rec) if use_rec else None
+                use_rec = st.checkbox("Recall (TPR)", key="from_rec_cb")
+                recall = st.slider("Value", 0.0, 1.0, 0.75, 0.01, key="from_rec_val", disabled=not use_rec, label_visibility="collapsed") if use_rec else None
 
-            with met_col2:
-                use_spec = st.checkbox("Specificity", key="from_spec_cb")
-                specificity = st.slider("Value", 0.0, 1.0, 0.90, 0.01, key="from_spec_val", disabled=not use_spec) if use_spec else None
-
-                use_f1 = st.checkbox("F1 Score", key="from_f1_cb")
-                f1_score = st.slider("Value", 0.0, 1.0, 0.77, 0.01, key="from_f1_val", disabled=not use_f1) if use_f1 else None
+                use_spec = st.checkbox("Specificity (TNR)", key="from_spec_cb")
+                specificity = st.slider("Value", 0.0, 1.0, 0.90, 0.01, key="from_spec_val", disabled=not use_spec, label_visibility="collapsed") if use_spec else None
 
                 use_prev = st.checkbox("Prevalence", key="from_prev_cb")
-                prevalence = st.slider("Value", 0.0, 1.0, 0.40, 0.01, key="from_prev_val", disabled=not use_prev) if use_prev else None
+                prevalence = st.slider("Value", 0.0, 1.0, 0.40, 0.01, key="from_prev_val", disabled=not use_prev, label_visibility="collapsed") if use_prev else None
 
-            selected_count = sum([use_acc, use_prec, use_rec, use_spec, use_f1, use_prev])
+            with met_col2:
+                st.markdown("**Predictive Values**")
+                use_npv = st.checkbox("NPV", key="from_npv_cb")
+                npv = st.slider("Value", 0.0, 1.0, 0.90, 0.01, key="from_npv_val", disabled=not use_npv, label_visibility="collapsed") if use_npv else None
+
+                st.markdown("**Error Rates**")
+                use_fpr = st.checkbox("FPR (Type I)", key="from_fpr_cb")
+                fpr = st.slider("Value", 0.0, 1.0, 0.10, 0.01, key="from_fpr_val", disabled=not use_fpr, label_visibility="collapsed") if use_fpr else None
+
+                use_fnr = st.checkbox("FNR (Type II)", key="from_fnr_cb")
+                fnr = st.slider("Value", 0.0, 1.0, 0.15, 0.01, key="from_fnr_val", disabled=not use_fnr, label_visibility="collapsed") if use_fnr else None
+
+                use_err = st.checkbox("Error Rate", key="from_err_cb")
+                error_rate = st.slider("Value", 0.0, 1.0, 0.15, 0.01, key="from_err_val", disabled=not use_err, label_visibility="collapsed") if use_err else None
+
+            with met_col3:
+                st.markdown("**Composite Metrics**")
+                use_f1 = st.checkbox("F1 Score", key="from_f1_cb")
+                f1_score = st.slider("Value", 0.0, 1.0, 0.77, 0.01, key="from_f1_val", disabled=not use_f1, label_visibility="collapsed") if use_f1 else None
+
+            selected_count = sum([use_acc, use_prec, use_rec, use_spec, use_f1, use_prev, use_npv, use_fpr, use_fnr, use_err])
 
             if selected_count < 3:
                 st.warning(f"⚠️ Need at least 3 metrics. Currently selected: {selected_count}")
@@ -79,7 +96,11 @@ def render_metric_completion_tab():
                         recall=recall,
                         specificity=specificity,
                         f1_score=f1_score,
-                        prevalence=prevalence
+                        prevalence=prevalence,
+                        npv=npv,
+                        fpr=fpr,
+                        fnr=fnr,
+                        error_rate=error_rate
                     )
 
                     # Store in session state so it persists across reruns
@@ -123,14 +144,22 @@ def render_metric_completion_tab():
 
         with col2:
             st.info("""
-            **Good combinations:**
+            **Example combinations:**
             - Precision + Recall + Prevalence
             - Accuracy + Recall + Prevalence
             - Recall + Specificity + Prevalence
+            - NPV + Specificity + Prevalence
+            - FPR + FNR + Prevalence
+            - Error Rate + Precision + Recall
 
             **Requirements:**
             - At least 3 metrics
             - Metrics must be consistent
+
+            **Aliases:**
+            - PPV = Precision
+            - TPR = Recall
+            - TNR = Specificity
             """)
 
     with completion_tab2:
@@ -143,24 +172,42 @@ def render_metric_completion_tab():
             infer_total = st.number_input("Total Samples", min_value=1, value=100, step=1, key="infer_total")
 
             st.markdown("#### Select Known Metrics (need at least 2)")
-            inf_col1, inf_col2 = st.columns(2)
+            inf_col1, inf_col2, inf_col3 = st.columns(3)
 
             with inf_col1:
+                st.markdown("**Primary Metrics**")
                 infer_use_acc = st.checkbox("Accuracy", value=True, key="infer_acc_cb")
-                infer_accuracy = st.slider("Value", 0.0, 1.0, 0.85, 0.01, key="infer_acc_val", disabled=not infer_use_acc) if infer_use_acc else None
+                infer_accuracy = st.slider("Value", 0.0, 1.0, 0.85, 0.01, key="infer_acc_val", disabled=not infer_use_acc, label_visibility="collapsed") if infer_use_acc else None
 
-                infer_use_prec = st.checkbox("Precision", key="infer_prec_cb")
-                infer_precision = st.slider("Value", 0.0, 1.0, 0.80, 0.01, key="infer_prec_val", disabled=not infer_use_prec) if infer_use_prec else None
+                infer_use_prec = st.checkbox("Precision (PPV)", key="infer_prec_cb")
+                infer_precision = st.slider("Value", 0.0, 1.0, 0.80, 0.01, key="infer_prec_val", disabled=not infer_use_prec, label_visibility="collapsed") if infer_use_prec else None
 
-                infer_use_rec = st.checkbox("Recall", key="infer_rec_cb")
-                infer_recall = st.slider("Value", 0.0, 1.0, 0.75, 0.01, key="infer_rec_val", disabled=not infer_use_rec) if infer_use_rec else None
+                infer_use_rec = st.checkbox("Recall (TPR)", key="infer_rec_cb")
+                infer_recall = st.slider("Value", 0.0, 1.0, 0.75, 0.01, key="infer_rec_val", disabled=not infer_use_rec, label_visibility="collapsed") if infer_use_rec else None
 
-            with inf_col2:
-                infer_use_spec = st.checkbox("Specificity", key="infer_spec_cb")
-                infer_specificity = st.slider("Value", 0.0, 1.0, 0.90, 0.01, key="infer_spec_val", disabled=not infer_use_spec) if infer_use_spec else None
+                infer_use_spec = st.checkbox("Specificity (TNR)", key="infer_spec_cb")
+                infer_specificity = st.slider("Value", 0.0, 1.0, 0.90, 0.01, key="infer_spec_val", disabled=not infer_use_spec, label_visibility="collapsed") if infer_use_spec else None
 
                 infer_use_prev = st.checkbox("Prevalence", value=True, key="infer_prev_cb")
-                infer_prevalence = st.slider("Value", 0.0, 1.0, 0.40, 0.01, key="infer_prev_val", disabled=not infer_use_prev) if infer_use_prev else None
+                infer_prevalence = st.slider("Value", 0.0, 1.0, 0.40, 0.01, key="infer_prev_val", disabled=not infer_use_prev, label_visibility="collapsed") if infer_use_prev else None
+
+            with inf_col2:
+                st.markdown("**Predictive Values**")
+                infer_use_npv = st.checkbox("NPV", key="infer_npv_cb")
+                infer_npv = st.slider("Value", 0.0, 1.0, 0.90, 0.01, key="infer_npv_val", disabled=not infer_use_npv, label_visibility="collapsed") if infer_use_npv else None
+
+                st.markdown("**Error Rates**")
+                infer_use_fpr = st.checkbox("FPR (Type I)", key="infer_fpr_cb")
+                infer_fpr = st.slider("Value", 0.0, 1.0, 0.10, 0.01, key="infer_fpr_val", disabled=not infer_use_fpr, label_visibility="collapsed") if infer_use_fpr else None
+
+                infer_use_fnr = st.checkbox("FNR (Type II)", key="infer_fnr_cb")
+                infer_fnr = st.slider("Value", 0.0, 1.0, 0.15, 0.01, key="infer_fnr_val", disabled=not infer_use_fnr, label_visibility="collapsed") if infer_use_fnr else None
+
+                infer_use_err = st.checkbox("Error Rate", key="infer_err_cb")
+                infer_error_rate = st.slider("Value", 0.0, 1.0, 0.15, 0.01, key="infer_err_val", disabled=not infer_use_err, label_visibility="collapsed") if infer_use_err else None
+
+            with inf_col3:
+                pass  # Empty column for symmetry
 
             st.markdown("#### Simulation Parameters")
             sim_col1, sim_col2 = st.columns(2)
@@ -169,7 +216,8 @@ def render_metric_completion_tab():
             with sim_col2:
                 n_sims = st.select_slider("Simulations", options=[1000, 2500, 5000, 10000], value=5000)
 
-            infer_count = sum([infer_use_acc, infer_use_prec, infer_use_rec, infer_use_spec, infer_use_prev])
+            infer_count = sum([infer_use_acc, infer_use_prec, infer_use_rec, infer_use_spec, infer_use_prev,
+                              infer_use_npv, infer_use_fpr, infer_use_fnr, infer_use_err])
 
             if infer_count < 2:
                 st.warning(f"⚠️ Need at least 2 metrics. Currently: {infer_count}")
@@ -186,6 +234,10 @@ def render_metric_completion_tab():
                             recall=infer_recall,
                             specificity=infer_specificity,
                             prevalence=infer_prevalence,
+                            npv=infer_npv,
+                            fpr=infer_fpr,
+                            fnr=infer_fnr,
+                            error_rate=infer_error_rate,
                             confidence_level=conf_level,
                             n_simulations=n_sims,
                             random_state=42
