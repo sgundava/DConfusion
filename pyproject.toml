@@ -5,8 +5,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "dconfusion"
 version = "1.0.3"
-description = "A package for working with confusion matrices."
-readme = "README.md"
+description = "Comprehensive confusion matrix analysis with metric inference, statistical testing, and cost-sensitive evaluation"
+readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.8"
 license = { file = "LICENSE" }
 authors = [
@@ -18,21 +18,41 @@ maintainers = [
     { name = "Matthew Lanham", email = "mlanham1@butler.edu" },
     { name = "Aadya Pawar", email = "pawar17@purdue.edu" },
 ]
-keywords = ["confusion", "matrix"]
+keywords = [
+    "confusion-matrix",
+    "classification",
+    "machine-learning",
+    "metrics",
+    "statistics",
+    "model-evaluation",
+    "performance-analysis",
+    "metric-inference",
+    "cost-sensitive",
+    "bootstrap",
+    "mcnemar",
+]
 dependencies = [
   "numpy", "matplotlib", "scipy"
 ]
 
 classifiers = [
-    # How mature is this project?
     "Development Status :: 5 - Production/Stable",
-
-    # Indicate who your project is intended for
     "Intended Audience :: Developers",
     "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Healthcare Industry",
     "Natural Language :: English",
-
-    "Typing :: Typed"
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
 ]
 
 [project.urls]

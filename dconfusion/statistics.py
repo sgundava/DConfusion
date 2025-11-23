@@ -369,6 +369,16 @@ class MetricInferenceMixin:
         tnr: Optional[float] = None,
         error_rate: Optional[float] = None,
         ppv: Optional[float] = None,
+        # Additional aliases for user convenience
+        sensitivity: Optional[float] = None,
+        true_positive_rate: Optional[float] = None,
+        true_negative_rate: Optional[float] = None,
+        positive_predictive_value: Optional[float] = None,
+        negative_predictive_value: Optional[float] = None,
+        false_positive_rate: Optional[float] = None,
+        false_negative_rate: Optional[float] = None,
+        type_i_error: Optional[float] = None,
+        type_ii_error: Optional[float] = None,
         **kwargs
     ):
         """
@@ -431,12 +441,67 @@ class MetricInferenceMixin:
         if total_samples <= 0:
             raise ValueError("total_samples must be positive")
 
-        # Handle aliases and derived metrics
+        # Handle full-name aliases first (map to standard short names)
+        # Sensitivity = Recall
+        if sensitivity is not None and recall is None:
+            recall = sensitivity
+        elif sensitivity is not None and recall is not None and abs(sensitivity - recall) > 1e-6:
+            raise ValueError(f"sensitivity and recall are aliases but have different values")
+
+        # True Positive Rate = Recall
+        if true_positive_rate is not None and recall is None:
+            recall = true_positive_rate
+        elif true_positive_rate is not None and recall is not None and abs(true_positive_rate - recall) > 1e-6:
+            raise ValueError(f"true_positive_rate and recall are aliases but have different values")
+
+        # True Negative Rate = Specificity
+        if true_negative_rate is not None and specificity is None:
+            specificity = true_negative_rate
+        elif true_negative_rate is not None and specificity is not None and abs(true_negative_rate - specificity) > 1e-6:
+            raise ValueError(f"true_negative_rate and specificity are aliases but have different values")
+
+        # Positive Predictive Value = Precision
+        if positive_predictive_value is not None and precision is None:
+            precision = positive_predictive_value
+        elif positive_predictive_value is not None and precision is not None and abs(positive_predictive_value - precision) > 1e-6:
+            raise ValueError(f"positive_predictive_value and precision are aliases but have different values")
+
+        # Negative Predictive Value = NPV
+        if negative_predictive_value is not None and npv is None:
+            npv = negative_predictive_value
+        elif negative_predictive_value is not None and npv is not None and abs(negative_predictive_value - npv) > 1e-6:
+            raise ValueError(f"negative_predictive_value and npv are aliases but have different values")
+
+        # False Positive Rate = FPR
+        if false_positive_rate is not None and fpr is None:
+            fpr = false_positive_rate
+        elif false_positive_rate is not None and fpr is not None and abs(false_positive_rate - fpr) > 1e-6:
+            raise ValueError(f"false_positive_rate and fpr are aliases but have different values")
+
+        # False Negative Rate = FNR
+        if false_negative_rate is not None and fnr is None:
+            fnr = false_negative_rate
+        elif false_negative_rate is not None and fnr is not None and abs(false_negative_rate - fnr) > 1e-6:
+            raise ValueError(f"false_negative_rate and fnr are aliases but have different values")
+
+        # Type I Error = FPR
+        if type_i_error is not None and fpr is None:
+            fpr = type_i_error
+        elif type_i_error is not None and fpr is not None and abs(type_i_error - fpr) > 1e-6:
+            raise ValueError(f"type_i_error and fpr are aliases but have different values")
+
+        # Type II Error = FNR
+        if type_ii_error is not None and fnr is None:
+            fnr = type_ii_error
+        elif type_ii_error is not None and fnr is not None and abs(type_ii_error - fnr) > 1e-6:
+            raise ValueError(f"type_ii_error and fnr are aliases but have different values")
+
+        # Handle short aliases and derived metrics
         # TPR is an alias for recall
         if tpr is not None and recall is None:
             recall = tpr
         elif tpr is not None and recall is not None and abs(tpr - recall) > 1e-6:
-            raise ValueError(f"tpr ({tpr}) and recall ({recall}) are aliases but have different values")
+            raise ValueError(f"tpr and recall are aliases but have different values")
 
         # TNR is an alias for specificity
         if tnr is not None and specificity is None:
@@ -955,6 +1020,16 @@ class MetricInferenceMixin:
         tnr: Optional[float] = None,
         error_rate: Optional[float] = None,
         ppv: Optional[float] = None,
+        # Additional aliases for user convenience
+        sensitivity: Optional[float] = None,
+        true_positive_rate: Optional[float] = None,
+        true_negative_rate: Optional[float] = None,
+        positive_predictive_value: Optional[float] = None,
+        negative_predictive_value: Optional[float] = None,
+        false_positive_rate: Optional[float] = None,
+        false_negative_rate: Optional[float] = None,
+        type_i_error: Optional[float] = None,
+        type_ii_error: Optional[float] = None,
         confidence_level: float = 0.95,
         n_simulations: int = 10000,
         random_state: Optional[int] = None
@@ -1019,7 +1094,53 @@ class MetricInferenceMixin:
         if total_samples <= 0:
             raise ValueError("total_samples must be positive")
 
-        # Handle aliases and derived metrics (same as from_metrics)
+        # Handle full-name aliases first (same as from_metrics)
+        if sensitivity is not None and recall is None:
+            recall = sensitivity
+        elif sensitivity is not None and recall is not None and abs(sensitivity - recall) > 1e-6:
+            raise ValueError(f"sensitivity and recall are aliases but have different values")
+
+        if true_positive_rate is not None and recall is None:
+            recall = true_positive_rate
+        elif true_positive_rate is not None and recall is not None and abs(true_positive_rate - recall) > 1e-6:
+            raise ValueError(f"true_positive_rate and recall are aliases but have different values")
+
+        if true_negative_rate is not None and specificity is None:
+            specificity = true_negative_rate
+        elif true_negative_rate is not None and specificity is not None and abs(true_negative_rate - specificity) > 1e-6:
+            raise ValueError(f"true_negative_rate and specificity are aliases but have different values")
+
+        if positive_predictive_value is not None and precision is None:
+            precision = positive_predictive_value
+        elif positive_predictive_value is not None and precision is not None and abs(positive_predictive_value - precision) > 1e-6:
+            raise ValueError(f"positive_predictive_value and precision are aliases but have different values")
+
+        if negative_predictive_value is not None and npv is None:
+            npv = negative_predictive_value
+        elif negative_predictive_value is not None and npv is not None and abs(negative_predictive_value - npv) > 1e-6:
+            raise ValueError(f"negative_predictive_value and npv are aliases but have different values")
+
+        if false_positive_rate is not None and fpr is None:
+            fpr = false_positive_rate
+        elif false_positive_rate is not None and fpr is not None and abs(false_positive_rate - fpr) > 1e-6:
+            raise ValueError(f"false_positive_rate and fpr are aliases but have different values")
+
+        if false_negative_rate is not None and fnr is None:
+            fnr = false_negative_rate
+        elif false_negative_rate is not None and fnr is not None and abs(false_negative_rate - fnr) > 1e-6:
+            raise ValueError(f"false_negative_rate and fnr are aliases but have different values")
+
+        if type_i_error is not None and fpr is None:
+            fpr = type_i_error
+        elif type_i_error is not None and fpr is not None and abs(type_i_error - fpr) > 1e-6:
+            raise ValueError(f"type_i_error and fpr are aliases but have different values")
+
+        if type_ii_error is not None and fnr is None:
+            fnr = type_ii_error
+        elif type_ii_error is not None and fnr is not None and abs(type_ii_error - fnr) > 1e-6:
+            raise ValueError(f"type_ii_error and fnr are aliases but have different values")
+
+        # Handle short aliases and derived metrics (same as from_metrics)
         if tpr is not None and recall is None:
             recall = tpr
         elif tpr is not None and recall is not None and abs(tpr - recall) > 1e-6:
