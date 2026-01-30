@@ -8,6 +8,7 @@ from .statistical_testing import render_statistical_testing_tab
 from .cost_analysis import render_cost_analysis_tab
 from .metric_completion import render_metric_completion_tab
 from .detailed_view import render_detailed_view_tab
+from .consistency_testing import render_consistency_testing_tab
 
 __all__ = [
     'render_sidebar',
@@ -18,4 +19,5 @@ __all__ = [
     'render_cost_analysis_tab',
     'render_metric_completion_tab',
     'render_detailed_view_tab',
+    'render_consistency_testing_tab',
 ]

@@ -11,9 +11,31 @@ from .visualization import VisualizationMixin
 from .io import IOMixin
 from .statistics import StatisticalTestsMixin, MetricInferenceMixin
 
+# ConsistencyMixin is optional - requires mlscorecheck
+try:
+    from .consistency import ConsistencyMixin
+    _HAS_CONSISTENCY = True
+except ImportError:
+    _HAS_CONSISTENCY = False
+    # Create a stub mixin that provides helpful error messages
+    class ConsistencyMixin:
+        """Stub mixin when mlscorecheck is not installed."""
+        def check_reported_scores(self, *args, **kwargs):
+            raise ImportError(
+                "Consistency testing requires 'mlscorecheck'. "
+                "Install with: pip install mlscorecheck "
+                "or pip install dconfusion[consistency]"
+            )
+        def verify_own_scores(self, *args, **kwargs):
+            raise ImportError(
+                "Consistency testing requires 'mlscorecheck'. "
+                "Install with: pip install mlscorecheck "
+                "or pip install dconfusion[consistency]"
+            )
+
 
 class DConfusion(DConfusionCore, MetricsMixin, VisualizationMixin, IOMixin,
-                  StatisticalTestsMixin, MetricInferenceMixin):
+                  StatisticalTestsMixin, MetricInferenceMixin, ConsistencyMixin):
     """
     A comprehensive confusion matrix class for both binary and multi-class classification analysis.
 

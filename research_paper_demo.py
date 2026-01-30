@@ -225,6 +225,129 @@ print("   - Precision could be anywhere from 0.25 to 1.00!")
 print("   - Need more samples OR more reported metrics for reliable inference")
 print("   - This quantifies the uncertainty ignored by papers that don't report CIs")
 
+# Scenario 6: Detecting Impossible/Inconsistent Metrics
+print("\n" + "=" * 90)
+print("SCENARIO 6: Detecting Impossible Metric Combinations")
+print("=" * 90)
+
+print("""
+Research papers sometimes report metrics that are mathematically impossible to achieve
+together. DConfusion warns users when requested metrics cannot coexist.
+
+Let's test several impossible combinations:
+""")
+
+print("-" * 90)
+print("Example 1: High accuracy + high TNR + extremely low NPV")
+print("-" * 90)
+print("""
+Requested: accuracy=0.85, tnr=0.90, npv=0.01
+Why impossible: If TNR is high (90% of negatives correctly identified as negative),
+then TN is large. NPV = TN/(TN+FN). For NPV to be only 1%, we'd need FN >> TN,
+but high accuracy contradicts having many false negatives.
+""")
+
+try:
+    impossible_1 = DConfusion.from_metrics(
+        total_samples=10000,
+        accuracy=0.85,
+        tnr=0.90,
+        npv=0.01
+    )
+    print(f"Result: Created matrix (might indicate edge case)")
+except Exception as e:
+    print(f"⚠️  Warning/Error: {e}")
+
+print("\n" + "-" * 90)
+print("Example 2: Contradictory TPR and FNR")
+print("-" * 90)
+print("""
+Requested: tpr=0.90 (90% sensitivity), fnr=0.50 (50% miss rate)
+Why impossible: TPR + FNR must always equal 1 (100% of actual positives).
+If 90% are correctly identified, only 10% can be missed, not 50%.
+""")
+
+try:
+    impossible_2 = DConfusion.from_metrics(
+        total_samples=1000,
+        tpr=0.90,
+        fnr=0.50,
+        prevalence=0.30
+    )
+    print(f"Result: Created matrix (might indicate edge case)")
+except Exception as e:
+    print(f"⚠️  Warning/Error: {e}")
+
+print("\n" + "-" * 90)
+print("Example 3: Contradictory TNR and FPR (different values)")
+print("-" * 90)
+print("""
+Requested: tnr=0.80, fpr=0.50
+Why impossible: TNR + FPR must always equal 1 (100% of actual negatives).
+If TNR is 80%, then FPR must be 20%, not 50%.
+""")
+
+try:
+    impossible_3 = DConfusion.from_metrics(
+        total_samples=1000,
+        tnr=0.80,
+        fpr=0.50,
+        prevalence=0.30
+    )
+    print(f"Result: Created matrix (might indicate edge case)")
+except Exception as e:
+    print(f"⚠️  Warning/Error: {e}")
+
+print("\n" + "-" * 90)
+print("Example 4: Contradictory error rates")
+print("-" * 90)
+print("""
+Requested: fpr=0.90 (90% false positive rate), tnr=0.90 (90% true negative rate)
+Why impossible: FPR + TNR = 1 always (they must sum to 100% of actual negatives).
+Having both at 90% would require 180% of negatives, which is impossible.
+""")
+
+try:
+    impossible_4 = DConfusion.from_metrics(
+        total_samples=1000,
+        fpr=0.90,
+        tnr=0.90,
+        prevalence=0.20
+    )
+    print(f"Result: Created matrix (might indicate edge case)")
+except Exception as e:
+    print(f"⚠️  Warning/Error: {e}")
+
+print("\n" + "-" * 90)
+print("Example 5: Incompatible accuracy and error rate")
+print("-" * 90)
+print("""
+Requested: accuracy=0.90, error_rate=0.30
+Why impossible: Accuracy + Error Rate must always equal 1.
+If accuracy is 90%, error rate must be 10%, not 30%.
+""")
+
+try:
+    impossible_5 = DConfusion.from_metrics(
+        total_samples=1000,
+        accuracy=0.90,
+        error_rate=0.30,
+        prevalence=0.40
+    )
+    print(f"Result: Created matrix (might indicate edge case)")
+except Exception as e:
+    print(f"⚠️  Warning/Error: {e}")
+
+print("""
+💡 Key Insight: When reviewing papers, if reported metrics seem inconsistent,
+   DConfusion can help verify whether the combination is mathematically possible.
+   This is valuable for:
+   - Peer review and validation
+   - Detecting reporting errors or typos in papers
+   - Understanding fundamental metric relationships
+   - Catching "too good to be true" claims
+""")
+
 # Summary
 print("\n" + "=" * 90)
 print("SUMMARY: VALUE OF ENHANCED METRIC INFERENCE")
@@ -237,6 +360,7 @@ print("""
 ✓ Quantify uncertainty when information is incomplete
 ✓ Validate reported metrics for consistency
 ✓ Bridge medical/statistical/ML terminology differences
+✓ Detect mathematically impossible metric combinations (Scenario 6)
 
 This makes DConfusion essential for:
 - Literature reviews and meta-analyses

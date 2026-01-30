@@ -22,6 +22,7 @@ from components import (
     render_cost_analysis_tab,
     render_detailed_view_tab,
     render_metric_completion_tab,
+    render_consistency_testing_tab,
 )
 
 # Page configuration
@@ -40,8 +41,12 @@ render_sidebar()
 # Get matrices from session state
 matrices = get_matrices()
 
-# Main content area - two top-level tabs
-tab_comparison, tab_metric_completion = st.tabs(["📊 Model Comparison", "🔍 Metric Completion"])
+# Main content area - three top-level tabs
+tab_comparison, tab_metric_completion, tab_consistency = st.tabs([
+    "📊 Model Comparison",
+    "🔍 Metric Completion",
+    "🔬 Consistency Testing"
+])
 
 with tab_comparison:
     if not matrices:
@@ -78,6 +83,10 @@ with tab_comparison:
 # Metric Completion Tab (always available, independent of models)
 with tab_metric_completion:
     render_metric_completion_tab()
+
+# Consistency Testing Tab (always available - has manual mode)
+with tab_consistency:
+    render_consistency_testing_tab(matrices)
 
 # Footer
 st.markdown("---")

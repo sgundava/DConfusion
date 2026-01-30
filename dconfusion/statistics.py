@@ -379,6 +379,11 @@ class MetricInferenceMixin:
         false_negative_rate: Optional[float] = None,
         type_i_error: Optional[float] = None,
         type_ii_error: Optional[float] = None,
+        # False omission rate and false discovery rate
+        for_rate: Optional[float] = None,
+        fdr: Optional[float] = None,
+        false_omission_rate: Optional[float] = None,
+        false_discovery_rate: Optional[float] = None,
         **kwargs
     ):
         """
@@ -544,6 +549,38 @@ class MetricInferenceMixin:
                 expected_error = 1 - accuracy
                 if abs(error_rate - expected_error) > 1e-6:
                     raise ValueError(f"error_rate ({error_rate}) and accuracy ({accuracy}) are inconsistent. Error rate should be {expected_error:.4f}")
+
+        # False Omission Rate = FOR (alias handling)
+        if false_omission_rate is not None and for_rate is None:
+            for_rate = false_omission_rate
+        elif false_omission_rate is not None and for_rate is not None and abs(false_omission_rate - for_rate) > 1e-6:
+            raise ValueError(f"false_omission_rate and for_rate are aliases but have different values")
+
+        # False Discovery Rate = FDR (alias handling)
+        if false_discovery_rate is not None and fdr is None:
+            fdr = false_discovery_rate
+        elif false_discovery_rate is not None and fdr is not None and abs(false_discovery_rate - fdr) > 1e-6:
+            raise ValueError(f"false_discovery_rate and fdr are aliases but have different values")
+
+        # FOR = 1 - NPV (convert to NPV for solving)
+        if for_rate is not None:
+            if npv is None:
+                npv = 1 - for_rate
+            else:
+                # Validate consistency
+                expected_for = 1 - npv
+                if abs(for_rate - expected_for) > 1e-6:
+                    raise ValueError(f"for_rate ({for_rate}) and npv ({npv}) are inconsistent. FOR should be {expected_for:.4f}")
+
+        # FDR = 1 - Precision (convert to precision for solving)
+        if fdr is not None:
+            if precision is None:
+                precision = 1 - fdr
+            else:
+                # Validate consistency
+                expected_fdr = 1 - precision
+                if abs(fdr - expected_fdr) > 1e-6:
+                    raise ValueError(f"fdr ({fdr}) and precision ({precision}) are inconsistent. FDR should be {expected_fdr:.4f}")
 
         # Count provided metrics (after conversions)
         provided_metrics = {
@@ -1030,6 +1067,11 @@ class MetricInferenceMixin:
         false_negative_rate: Optional[float] = None,
         type_i_error: Optional[float] = None,
         type_ii_error: Optional[float] = None,
+        # False omission rate and false discovery rate
+        for_rate: Optional[float] = None,
+        fdr: Optional[float] = None,
+        false_omission_rate: Optional[float] = None,
+        false_discovery_rate: Optional[float] = None,
         confidence_level: float = 0.95,
         n_simulations: int = 10000,
         random_state: Optional[int] = None
@@ -1179,6 +1221,32 @@ class MetricInferenceMixin:
                 expected_error = 1 - accuracy
                 if abs(error_rate - expected_error) > 1e-6:
                     raise ValueError(f"error_rate and accuracy are inconsistent")
+
+        # False Omission Rate alias handling
+        if false_omission_rate is not None and for_rate is None:
+            for_rate = false_omission_rate
+
+        # False Discovery Rate alias handling
+        if false_discovery_rate is not None and fdr is None:
+            fdr = false_discovery_rate
+
+        # FOR = 1 - NPV (convert to NPV for solving)
+        if for_rate is not None:
+            if npv is None:
+                npv = 1 - for_rate
+            else:
+                expected_for = 1 - npv
+                if abs(for_rate - expected_for) > 1e-6:
+                    raise ValueError(f"for_rate and npv are inconsistent")
+
+        # FDR = 1 - Precision (convert to precision for solving)
+        if fdr is not None:
+            if precision is None:
+                precision = 1 - fdr
+            else:
+                expected_fdr = 1 - precision
+                if abs(fdr - expected_fdr) > 1e-6:
+                    raise ValueError(f"fdr and precision are inconsistent")
 
         # Collect provided metrics (after conversions)
         provided = {}

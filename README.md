@@ -26,6 +26,7 @@ A Python package for working with confusion matrices - now with a web UI!
 * **📊 Statistical Testing** - Bootstrap confidence intervals, McNemar's test, metric consistency checks
 * **💰 Cost-Sensitive Analysis** - Calculate misclassification costs, find optimal metrics for your use case, compare models by business impact
 * **🔍 Metric Completion** - Reconstruct confusion matrices from 13 different metrics (including NPV, FPR, FNR, error rates), infer missing metrics with confidence intervals
+* **🔬 Consistency Testing** - Verify if reported scores are mathematically possible (wraps mlscorecheck by Fazekas & Kovács)
 * **Modular Design** - Clean separation: core, metrics, visualization, I/O, statistics
 
 ## Installation
@@ -686,6 +687,136 @@ Metric completion builds on established statistical methods:
 5. **Include `prevalence` when available** - Greatly constrains solution space
 6. **Higher `n_simulations` = better estimates** - But slower (default 10000 is good)
 
+## 🔬 Consistency Testing (NEW!)
+
+DConfusion now includes **consistency testing** - the ability to verify if reported performance scores are mathematically possible given an experimental setup. This feature wraps **mlscorecheck** by Fazekas & Kovács (2024).
+
+### Installation
+
+Consistency testing requires an optional dependency:
+
+```bash
+pip install dconfusion[consistency]
+# Or install mlscorecheck directly:
+pip install mlscorecheck
+```
+
+### What is Consistency Testing?
+
+Given p positive samples and n negative samples, only certain combinations of TP, FP, TN, FN are valid. This constrains which metric values are mathematically achievable.
+
+**Key Question:** "Could these reported scores actually result from this experimental setup?"
+
+**Use Cases:**
+- **Verifying Published Results:** Check if metrics in a paper make sense
+- **Detecting Reporting Errors:** Find typos or calculation mistakes
+- **Quality Assurance:** Validate your own ML pipelines
+- **Peer Review:** Identify impossible claims
+
+### Basic Usage
+
+```python
+from dconfusion import check_consistency, is_consistency_testing_available
+
+# Check if mlscorecheck is installed
+if is_consistency_testing_available():
+    # Check if reported scores are mathematically possible
+    result = check_consistency(
+        p=50,  # 50 positive samples
+        n=50,  # 50 negative samples
+        scores={'acc': 0.90, 'sens': 0.85, 'spec': 0.95},
+        epsilon=0.0001  # Numerical tolerance
+    )
+
+    if result.is_consistent:
+        print("Scores are mathematically possible!")
+    else:
+        print("Scores are IMPOSSIBLE given the sample sizes!")
+```
+
+### Using with DConfusion Objects
+
+```python
+from dconfusion import DConfusion
+
+# Create a confusion matrix
+cm = DConfusion(true_positive=45, false_negative=5,
+                false_positive=10, true_negative=40)
+
+# Verify some published scores are consistent with our setup
+result = cm.check_reported_scores({"acc": 0.85, "sens": 0.90})
+
+if not result.is_consistent:
+    print("Published scores are mathematically impossible!")
+
+# Sanity check: verify our own scores pass (should always be True)
+sanity = cm.verify_own_scores()
+print(f"Own scores valid: {sanity.is_consistent}")
+```
+
+### K-Fold Cross-Validation
+
+Check consistency of k-fold CV results:
+
+```python
+from dconfusion import check_consistency_kfold
+
+result = check_consistency_kfold(
+    p=100,  # Total positives in dataset
+    n=100,  # Total negatives in dataset
+    k=5,    # Number of folds
+    scores={'acc': 0.85, 'sens': 0.82},
+    aggregation='mos',  # 'mos' (Mean of Scores) or 'som' (Score of Means)
+    epsilon=0.0001
+)
+
+print(f"K-fold scores consistent: {result.is_consistent}")
+```
+
+### Understanding Epsilon (Tolerance)
+
+The `epsilon` parameter handles rounding uncertainty in reported scores:
+
+- Scores reported to 2 decimal places (e.g., 0.85): use `epsilon=0.005`
+- Scores reported to 4 decimal places (e.g., 0.8500): use `epsilon=0.00005`
+- Default: `epsilon=0.0001` (works for 4 decimal places)
+
+### Supported Metrics
+
+Common metric abbreviations accepted by mlscorecheck:
+- `acc` - Accuracy
+- `sens` - Sensitivity (Recall, TPR)
+- `spec` - Specificity (TNR)
+- `ppv` - Positive Predictive Value (Precision)
+- `npv` - Negative Predictive Value
+- `f1` - F1 Score
+
+### Comparison: Consistency Testing vs Metric Inference
+
+| Feature | Consistency Testing | Metric Inference |
+|---------|---------------------|------------------|
+| **Question** | "Are these scores possible?" | "What values fit these constraints?" |
+| **Output** | Boolean (yes/no) | Values + confidence intervals |
+| **Method** | Interval arithmetic + ILP | Monte Carlo simulation |
+| **Use Case** | Validation, verification | Reconstruction, estimation |
+
+Both are complementary - use consistency testing to validate, and metric inference to explore.
+
+### Web UI
+
+The Streamlit app includes a **Consistency Testing** tab where you can:
+- Check if loaded models' scores are consistent
+- Manually enter scores to verify (without loading a model)
+- Test k-fold cross-validation consistency
+
+### Attribution
+
+Consistency testing wraps **mlscorecheck** by Fazekas & Kovács:
+
+> *"Testing the Numerical Consistency of Reported Machine Learning Performance Scores"*
+> Fazekas, G. & Kovács, G. (2024)
+> [GitHub: mlscorecheck](https://github.com/FalseNegativeLab/mlscorecheck)
+
 # Roadmap
 Future features we're considering:
 - Integration with popular machine learning libraries (scikit-learn, PyTorch, TensorFlow)
@@ -707,3 +838,4 @@ dconfusion is released under the MIT License. See LICENSE for details.
 - v1.0.1: Updated documentation. Added new statistical tests.
 - v1.0.2: Added metric completion features - `from_metrics()` for exact reconstruction and `infer_metrics()` for probabilistic inference with confidence intervals.
 - v1.0.3: Bug fixes
+- v1.0.4: Added consistency testing - verify if reported scores are mathematically possible. Wraps mlscorecheck by Fazekas & Kovács (2024). Includes support for single test sets and k-fold CV. Added Consistency Testing tab to Streamlit app.

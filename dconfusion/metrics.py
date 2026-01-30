@@ -303,6 +303,8 @@ class MetricsMixin:
                     'f1_score': self.get_f1_score(),
                     'false_positive_rate': self.get_false_positive_rate(),
                     'false_negative_rate': self.get_false_negative_rate(),
+                    'false_omission_rate': self.get_false_omission_rate(),
+                    'false_discovery_rate': self.get_false_discovery_rate(),
                 })
 
                 if hasattr(self, 'get_g_mean'):
@@ -918,6 +920,78 @@ class MetricsMixin:
         validate_non_zero_denominator(denominator, "Negative Predictive Value (NPV)")
 
         return self.true_negative / denominator
+
+    def get_false_omission_rate(self) -> float:
+        """
+        Calculate False Omission Rate (FOR).
+
+        FOR = FN / (TN + FN) = 1 - NPV
+
+        Represents the probability that a negative prediction is incorrect
+        (i.e., the sample is actually positive when predicted negative).
+
+        Returns:
+            float: FOR value between 0 and 1
+
+        Raises:
+            ValueError: If not binary classification
+            ZeroDivisionError: If no predicted negatives (TN + FN = 0)
+        """
+        if self.n_classes != 2:
+            raise ValueError("FOR is only available for binary classification")
+
+        from .validation import validate_non_zero_denominator
+        denominator = self.true_negative + self.false_negative
+        validate_non_zero_denominator(denominator, "False Omission Rate (FOR)")
+
+        return self.false_negative / denominator
+
+    def get_for(self) -> float:
+        """
+        Alias for get_false_omission_rate().
+
+        FOR = FN / (TN + FN) = 1 - NPV
+
+        Returns:
+            float: False Omission Rate
+        """
+        return self.get_false_omission_rate()
+
+    def get_false_discovery_rate(self) -> float:
+        """
+        Calculate False Discovery Rate (FDR).
+
+        FDR = FP / (TP + FP) = 1 - Precision (PPV)
+
+        Represents the probability that a positive prediction is incorrect
+        (i.e., the sample is actually negative when predicted positive).
+
+        Returns:
+            float: FDR value between 0 and 1
+
+        Raises:
+            ValueError: If not binary classification
+            ZeroDivisionError: If no predicted positives (TP + FP = 0)
+        """
+        if self.n_classes != 2:
+            raise ValueError("FDR is only available for binary classification")
+
+        from .validation import validate_non_zero_denominator
+        denominator = self.true_positive + self.false_positive
+        validate_non_zero_denominator(denominator, "False Discovery Rate (FDR)")
+
+        return self.false_positive / denominator
+
+    def get_fdr(self) -> float:
+        """
+        Alias for get_false_discovery_rate().
+
+        FDR = FP / (TP + FP) = 1 - Precision
+
+        Returns:
+            float: False Discovery Rate
+        """
+        return self.get_false_discovery_rate()
 
     def get_tpr(self) -> float:
         """

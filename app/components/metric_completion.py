@@ -72,6 +72,12 @@ def render_metric_completion_tab():
                 use_npv = st.checkbox("NPV (Negative Predictive Value)", key="from_npv_cb", help="Probability that negative prediction is correct: TN/(TN+FN)")
                 npv = st.slider("Value", 0.0, 1.0, 0.90, 0.01, key="from_npv_val", disabled=not use_npv, label_visibility="collapsed") if use_npv else None
 
+                use_for = st.checkbox("FOR (False Omission Rate)", key="from_for_cb", help="Probability that negative prediction is wrong: FN/(TN+FN) = 1-NPV")
+                for_rate = st.slider("Value", 0.0, 1.0, 0.10, 0.01, key="from_for_val", disabled=not use_for, label_visibility="collapsed") if use_for else None
+
+                use_fdr = st.checkbox("FDR (False Discovery Rate)", key="from_fdr_cb", help="Probability that positive prediction is wrong: FP/(TP+FP) = 1-Precision")
+                fdr = st.slider("Value", 0.0, 1.0, 0.20, 0.01, key="from_fdr_val", disabled=not use_fdr, label_visibility="collapsed") if use_fdr else None
+
             with st.expander("**Error-Based Metrics**", expanded=False):
                 st.caption("Alternative formulations (1 - corresponding metric)")
 
@@ -84,7 +90,7 @@ def render_metric_completion_tab():
                 use_err = st.checkbox("Error Rate", key="from_err_cb", help="Overall misclassification rate: (FP+FN)/N = 1-Accuracy")
                 error_rate = st.slider("Value", 0.0, 1.0, 0.15, 0.01, key="from_err_val", disabled=not use_err, label_visibility="collapsed") if use_err else None
 
-            selected_count = sum([use_acc, use_prec, use_rec, use_spec, use_f1, use_prev, use_npv, use_fpr, use_fnr, use_err])
+            selected_count = sum([use_acc, use_prec, use_rec, use_spec, use_f1, use_prev, use_npv, use_for, use_fdr, use_fpr, use_fnr, use_err])
 
             if selected_count < 3:
                 st.warning(f"⚠️ Need at least 3 metrics. Currently selected: {selected_count}")
@@ -102,6 +108,8 @@ def render_metric_completion_tab():
                         f1_score=f1_score,
                         prevalence=prevalence,
                         npv=npv,
+                        for_rate=for_rate,
+                        fdr=fdr,
                         fpr=fpr,
                         fnr=fnr,
                         error_rate=error_rate
@@ -131,7 +139,7 @@ def render_metric_completion_tab():
 
                 st.markdown("#### All Computed Metrics")
                 metrics = cm.get_all_metrics()
-                metrics_df = pd.DataFrame([{"Metric": k.replace('_', ' ').title(), "Value": f"{v:.4f}"} for k, v in metrics.items()])
+                metrics_df = pd.DataFrame([{"Metric": k.replace('_', ' ').title(), "Value": f"{v:.4f}" if isinstance(v, (int, float)) else str(v)} for k, v in metrics.items()])
                 st.dataframe(metrics_df, width='stretch', hide_index=True)
 
                 # Generate default name using model counter
@@ -215,6 +223,12 @@ def render_metric_completion_tab():
                 infer_use_npv = st.checkbox("NPV (Negative Predictive Value)", key="infer_npv_cb", help="Probability that negative prediction is correct: TN/(TN+FN)")
                 infer_npv = st.slider("Value", 0.0, 1.0, 0.90, 0.01, key="infer_npv_val", disabled=not infer_use_npv, label_visibility="collapsed") if infer_use_npv else None
 
+                infer_use_for = st.checkbox("FOR (False Omission Rate)", key="infer_for_cb", help="Probability that negative prediction is wrong: FN/(TN+FN) = 1-NPV")
+                infer_for_rate = st.slider("Value", 0.0, 1.0, 0.10, 0.01, key="infer_for_val", disabled=not infer_use_for, label_visibility="collapsed") if infer_use_for else None
+
+                infer_use_fdr = st.checkbox("FDR (False Discovery Rate)", key="infer_fdr_cb", help="Probability that positive prediction is wrong: FP/(TP+FP) = 1-Precision")
+                infer_fdr = st.slider("Value", 0.0, 1.0, 0.20, 0.01, key="infer_fdr_val", disabled=not infer_use_fdr, label_visibility="collapsed") if infer_use_fdr else None
+
             with st.expander("**Error-Based Metrics**", expanded=False):
                 st.caption("Alternative formulations (1 - corresponding metric)")
 
@@ -235,7 +249,7 @@ def render_metric_completion_tab():
                 n_sims = st.select_slider("Simulations", options=[1000, 2500, 5000, 10000], value=5000)
 
             infer_count = sum([infer_use_acc, infer_use_prec, infer_use_rec, infer_use_spec, infer_use_prev,
-                              infer_use_npv, infer_use_fpr, infer_use_fnr, infer_use_err])
+                              infer_use_npv, infer_use_for, infer_use_fdr, infer_use_fpr, infer_use_fnr, infer_use_err])
 
             if infer_count < 2:
                 st.warning(f"⚠️ Need at least 2 metrics. Currently: {infer_count}")
@@ -253,6 +267,8 @@ def render_metric_completion_tab():
                             specificity=infer_specificity,
                             prevalence=infer_prevalence,
                             npv=infer_npv,
+                            for_rate=infer_for_rate,
+                            fdr=infer_fdr,
                             fpr=infer_fpr,
                             fnr=infer_fnr,
                             error_rate=infer_error_rate,
