@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dconfusion"
-version = "1.0.3"
+version = "1.1.1"
 description = "Comprehensive confusion matrix analysis with metric inference, statistical testing, and cost-sensitive evaluation"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.8"

@@ -839,3 +839,9 @@ dconfusion is released under the MIT License. See LICENSE for details.
 - v1.0.2: Added metric completion features - `from_metrics()` for exact reconstruction and `infer_metrics()` for probabilistic inference with confidence intervals.
 - v1.0.3: Bug fixes
 - v1.0.4: Added consistency testing - verify if reported scores are mathematically possible. Wraps mlscorecheck by Fazekas & Kovács (2024). Includes support for single test sets and k-fold CV. Added Consistency Testing tab to Streamlit app.
+- v1.1.0: Version 1.1 with consistency checks.
+- v1.1.1: Fixed precision handling bugs in `from_metrics()` / `_solve_confusion_matrix()`:
+  - Fixed Approach 1 (Precision + Recall + Prevalence) returning inaccurate results due to single-direction rounding. Now tries both floor/ceil for TP and predicted positives, picking the combination with minimum error.
+  - Fixed `precision=0` incorrectly setting `FP=0` in Approaches 1 and 6. Precision=0 means TP=0 (not FP=0); FP is unconstrained by precision alone.
+  - Fixed Approach 3 (Precision + Recall + Accuracy) silently skipping all candidates when `precision=0` due to missing else branch.
+  - Added proper contradiction detection when `precision=0` but `recall>0` (which requires TP>0).

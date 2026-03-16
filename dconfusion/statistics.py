@@ -663,20 +663,64 @@ class MetricInferenceMixin:
             # Prevalence = (TP + FN) / N => TP + FN = Prevalence * N
 
             actual_positives = round(prevalence * N)  # TP + FN
-            tp = round(recall * actual_positives)
-            fn = actual_positives - tp
 
-            # From precision: TP = P * (TP + FP) => FP = TP/P - TP = TP(1/P - 1)
-            if precision > 0:
-                predicted_positives = round(tp / precision)
-                fp = predicted_positives - tp
-            else:
+            if precision > 0 and recall > 0:
+                # Try floor and ceil for TP to find best integer solution
+                tp_exact = recall * actual_positives
+                best_solution = None
+                best_error = float('inf')
+
+                for tp in [int(tp_exact), int(tp_exact) + 1]:
+                    if tp < 0 or tp > actual_positives:
+                        continue
+                    fn = actual_positives - tp
+
+                    # Try floor and ceil for predicted_positives
+                    pp_exact = tp / precision
+                    for predicted_positives in [int(pp_exact), int(pp_exact) + 1]:
+                        fp = predicted_positives - tp
+                        if fp < 0:
+                            continue
+
+                        tn = N - tp - fn - fp
+                        if tn < 0:
+                            continue
+
+                        calc_prec = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+                        calc_rec = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+                        error = (calc_prec - precision) ** 2 + (calc_rec - recall) ** 2
+
+                        if error < best_error:
+                            best_error = error
+                            best_solution = (tp, fn, fp, tn)
+
+                if best_solution is not None:
+                    tp, fn, fp, tn = best_solution
+                    if all(x >= 0 for x in [tp, fn, fp, tn]) and tp + fn + fp + tn == N:
+                        return (tp, fn, fp, tn)
+
+            elif precision == 0 and recall == 0:
+                # Both zero: TP must be 0, FN = actual_positives
+                tp = 0
+                fn = actual_positives
+                # FP unconstrained by these metrics; default to 0
                 fp = 0
+                tn = N - fn
+                if tn >= 0:
+                    return (tp, fn, fp, tn)
 
-            tn = N - tp - fn - fp
+            elif precision == 0:
+                # precision=0 means TP=0, but recall > 0 means TP > 0: contradiction
+                pass  # skip to next approach
 
-            if all(x >= 0 for x in [tp, fn, fp, tn]) and tp + fn + fp + tn == N:
-                return (tp, fn, fp, tn)
+            elif recall == 0:
+                # recall=0 means TP=0
+                tp = 0
+                fn = actual_positives
+                fp = 0
+                tn = N - fn
+                if tn >= 0:
+                    return (tp, fn, fp, tn)
 
         # Approach 2: Accuracy, Recall, Prevalence
         if accuracy is not None and recall is not None and prevalence is not None:
@@ -707,45 +751,66 @@ class MetricInferenceMixin:
                 if recall > 0:
                     # From recall = TP / (TP + FN), we get: FN = TP/recall - TP
                     fn_exact = tp / recall - tp
-                    # Try both floor and ceil to find best integer match
-                    for fn in [int(fn_exact), int(fn_exact) + 1]:
-                        if fn < 0:
+                    fn_candidates = [int(fn_exact), int(fn_exact) + 1]
+                elif recall == 0:
+                    # recall = 0 means TP must be 0
+                    if tp != 0:
+                        continue
+                    # FN can be anything; we'll derive it from other constraints
+                    fn_candidates = range(N + 1)
+                else:
+                    continue
+
+                for fn in fn_candidates:
+                    if fn < 0:
+                        continue
+
+                    # For precision: FP = TP/precision - TP
+                    if precision > 0:
+                        fp_exact = tp / precision - tp
+                        fp_candidates = [int(fp_exact), int(fp_exact) + 1]
+                    elif precision == 0:
+                        # precision = 0 means TP must be 0
+                        if tp != 0:
+                            continue
+                        # FP is determined by: tn = N - tp - fn - fp and accuracy
+                        # tn = accuracy * N - tp, fp = N - tp - fn - tn
+                        tn_from_acc = round(accuracy * N) - tp
+                        fp_from_acc = N - tp - fn - tn_from_acc
+                        fp_candidates = [fp_from_acc]
+                    else:
+                        continue
+
+                    for fp in fp_candidates:
+                        if fp < 0:
                             continue
 
-                        # For precision: FP = TP/precision - TP
-                        if precision > 0:
-                            fp_exact = tp / precision - tp
-                            # Try both floor and ceil
-                            for fp in [int(fp_exact), int(fp_exact) + 1]:
-                                if fp < 0:
-                                    continue
+                        tn = N - tp - fn - fp
 
-                                tn = N - tp - fn - fp
+                        # Check validity
+                        if tn < 0 or tp + fn + fp + tn != N:
+                            continue
 
-                                # Check validity
-                                if tn < 0 or tp + fn + fp + tn != N:
-                                    continue
+                        # Calculate actual metrics
+                        calc_acc = (tp + tn) / N
+                        calc_prec = tp / (tp + fp) if (tp + fp) > 0 else 0
+                        calc_rec = tp / (tp + fn) if (tp + fn) > 0 else 0
 
-                                # Calculate actual metrics
-                                calc_acc = (tp + tn) / N
-                                calc_prec = tp / (tp + fp) if (tp + fp) > 0 else 0
-                                calc_rec = tp / (tp + fn) if (tp + fn) > 0 else 0
+                        # Calculate total error (weighted sum of squared errors)
+                        error = (
+                            (calc_acc - accuracy) ** 2 +
+                            (calc_prec - precision) ** 2 +
+                            (calc_rec - recall) ** 2
+                        )
 
-                                # Calculate total error (weighted sum of squared errors)
-                                error = (
-                                    (calc_acc - accuracy) ** 2 +
-                                    (calc_prec - precision) ** 2 +
-                                    (calc_rec - recall) ** 2
-                                )
+                        # Keep track of best solution
+                        if error < best_error:
+                            best_error = error
+                            best_solution = (tp, fn, fp, tn)
 
-                                # Keep track of best solution
-                                if error < best_error:
-                                    best_error = error
-                                    best_solution = (tp, fn, fp, tn)
-
-                                    # Only stop early if we found a perfect match
-                                    if error == 0:  # Exact match
-                                        return best_solution
+                            # Only stop early if we found a perfect match
+                            if error == 0:  # Exact match
+                                return best_solution
 
             # Return best solution found
             if best_solution is not None:
@@ -818,8 +883,19 @@ class MetricInferenceMixin:
                 if precision > 0:
                     predicted_positives = round(tp / precision)
                     fp = predicted_positives - tp
+                elif tp == 0:
+                    # precision = 0 means TP must be 0; FP determined by remaining constraints
+                    # Try all feasible FP values
+                    for fp_try in range(actual_negatives + 1):
+                        tn_try = N - tp - fn - fp_try
+                        if tn_try >= 0 and (tn_try + fn) > 0:
+                            calc_npv = tn_try / (tn_try + fn)
+                            if abs(calc_npv - npv) < 0.05 and tp + fn + fp_try + tn_try == N:
+                                return (tp, fn, fp_try, tn_try)
+                    continue
                 else:
-                    fp = 0
+                    # precision = 0 but tp > 0 is a contradiction
+                    continue
 
                 tn = N - tp - fn - fp
 
