@@ -1,3 +1,4 @@
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/dconfusion?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/dconfusion)
 # DConfusion
 A Python package for working with confusion matrices - now with a web UI!
 
